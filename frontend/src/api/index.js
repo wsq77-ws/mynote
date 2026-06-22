@@ -32,4 +32,9 @@ export function deleteNote(path) {
   return api.delete('/note', { params: { path } })
 }
 
+// 搜索笔记
+export function searchNotes(keyword) {
+  return api.get('/search', { params: { q: keyword } })
+}
+
 export default api

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getTree, createNote, deleteNote } from '../api/index.js'
+import { getTree, createNote, deleteNote, searchNotes } from '../api/index.js'
 
 const emit = defineEmits(['selectNote', 'noteCreated', 'noteDeleted'])
 
@@ -13,6 +13,12 @@ const dialogVisible = ref(false)
 const dialogType = ref('file') // 'file' or 'directory'
 const dialogParentPath = ref('default')
 const newName = ref('')
+const newAuthor = ref('')
+
+// 搜索相关
+const searchKeyword = ref('')
+const searchResults = ref([])
+const searching = ref(false)
 
 // 从目录树中提取所有目录路径（含 default），用于创建笔记时选择
 const directoryOptions = ref([])
@@ -54,6 +60,36 @@ async function loadTree() {
   }
 }
 
+// 搜索笔记
+async function handleSearch() {
+  const keyword = searchKeyword.value.trim()
+  if (!keyword) {
+    searchResults.value = []
+    return
+  }
+
+  searching.value = true
+  try {
+    const res = await searchNotes(keyword)
+    if (res.data.code === 200) {
+      searchResults.value = res.data.data || []
+    }
+  } catch (err) {
+    console.error('搜索失败:', err)
+  } finally {
+    searching.value = false
+  }
+}
+
+// 点击搜索结果
+function clickSearchResult(item) {
+  if (!item.is_dir) {
+    emit('selectNote', { path: item.path, name: item.name })
+  }
+  searchKeyword.value = ''
+  searchResults.value = []
+}
+
 // 选择笔记
 function selectNode(node) {
   if (node.type === 'file') {
@@ -87,6 +123,7 @@ function showNewFileDialog(parentPath = '') {
   dialogType.value = 'file'
   dialogParentPath.value = parentPath || 'default'
   newName.value = ''
+  newAuthor.value = ''
   dialogVisible.value = true
   contextMenu.value = null
 }
@@ -95,6 +132,7 @@ function showNewDirectoryDialog(parentPath = '') {
   dialogType.value = 'directory'
   dialogParentPath.value = parentPath || 'default'
   newName.value = ''
+  newAuthor.value = ''
   dialogVisible.value = true
   contextMenu.value = null
 }
@@ -107,11 +145,13 @@ async function confirmCreate() {
 
   // 确保有目标目录，默认为 default
   const targetDir = dialogParentPath.value || 'default'
+  const author = newAuthor.value.trim() || 'default'
 
   try {
     const data = {
       path: targetDir,
       name: newName.value.trim(),
+      author: author,
       is_dir: dialogType.value === 'directory',
       content: dialogType.value === 'file' ? `# ${newName.value.trim()}\n\n` : '',
     }
@@ -119,6 +159,7 @@ async function confirmCreate() {
     ElMessage.success('创建成功')
     dialogVisible.value = false
     newName.value = ''
+    newAuthor.value = ''
     await loadTree()
 
     // 如果是文件，自动打开编辑
@@ -168,6 +209,33 @@ onMounted(() => {
         <el-icon><Plus /></el-icon> 新建
       </el-button>
     </div>
+
+    <!-- 搜索框 -->
+    <div class="search-box">
+      <el-input
+        v-model="searchKeyword"
+        placeholder="搜索笔记..."
+        :prefix-icon="'Search'"
+        clearable
+        @input="handleSearch"
+        @focus="handleSearch"
+      />
+      <!-- 搜索结果下拉 -->
+      <div v-if="searchResults.length > 0" class="search-results">
+        <div
+          v-for="item in searchResults"
+          :key="item.path"
+          class="search-item"
+          @click="clickSearchResult(item)"
+        >
+          <el-icon v-if="item.is_dir"><FolderOpened /></el-icon>
+          <el-icon v-else><Document /></el-icon>
+          <span class="search-item-name">{{ item.name }}</span>
+          <span class="search-item-path">{{ item.path }}</span>
+        </div>
+      </div>
+    </div>
+
     <div class="sidebar-content">
       <el-tree
         v-loading="loading"
@@ -188,6 +256,9 @@ onMounted(() => {
               <Document />
             </el-icon>
             <span>{{ data.name }}</span>
+            <span v-if="data.author && data.author !== 'default'" class="tree-author">
+              ({{ data.author }})
+            </span>
           </span>
         </template>
       </el-tree>
@@ -243,6 +314,13 @@ onMounted(() => {
             @keyup.enter="confirmCreate"
           />
         </el-form-item>
+        <el-form-item label="作者">
+          <el-input
+            v-model="newAuthor"
+            placeholder="留空则使用 default"
+            @keyup.enter="confirmCreate"
+          />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -251,3 +329,53 @@ onMounted(() => {
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.search-box {
+  position: relative;
+  padding: 0 12px 8px;
+}
+
+.search-results {
+  position: absolute;
+  top: 100%;
+  left: 12px;
+  right: 12px;
+  background: var(--el-bg-color, #fff);
+  border: 1px solid var(--el-border-color, #dcdfe6);
+  border-radius: 4px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.search-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--el-border-color-lighter, #f0f0f0);
+}
+
+.search-item:hover {
+  background: var(--el-fill-color-light, #f5f7fa);
+}
+
+.search-item-name {
+  font-weight: 500;
+}
+
+.search-item-path {
+  color: var(--el-text-color-secondary, #909399);
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.tree-author {
+  color: var(--el-text-color-secondary, #909399);
+  font-size: 12px;
+  margin-left: 4px;
+}
+</style>

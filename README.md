@@ -12,6 +12,8 @@ A Markdown-based local knowledge note system with hierarchical directory structu
 - **Context Menu** — Right-click on the tree to create notes/directories or delete nodes
 - **Live Preview** — WYSIWYG editing experience
 - **Pluggable Storage** — Supports local filesystem and object storage (S3 compatible), switchable via config file
+- **Metadata Management** — Document metadata (author, path, edit time, etc.) stored in SQLite for search and fast tree loading
+- **Document Search** — Search box at the top of the sidebar, powered by SQLite indexing
 - **One-Click Deployment** — In production mode, the backend serves frontend static files on a single port
 
 ## Tech Stack
@@ -21,6 +23,7 @@ A Markdown-based local knowledge note system with hierarchical directory structu
 | **Frontend** | Vue 3 + Vite + Element Plus + md-editor-v3 |
 | **Backend** | Go 1.23+ / Gin |
 | **Storage** | Pluggable storage layer: local filesystem / object storage (S3 compatible) |
+| **Metadata** | SQLite (modernc.org/sqlite, pure Go, no CGO required) |
 
 ## Prerequisites
 
@@ -99,9 +102,10 @@ Right-click a note or directory in the tree and select "Delete".
 | `GET` | `/api/health` | Health check |
 | `GET` | `/api/tree?path=` | Get directory tree |
 | `GET` | `/api/note?path=` | Get note content |
-| `POST` | `/api/note` | Create note or directory |
+| `POST` | `/api/note` | Create note or directory (author optional) |
 | `PUT` | `/api/note?path=` | Update note content |
 | `DELETE` | `/api/note?path=` | Delete note or directory |
+| `GET` | `/api/search?keyword=` | Search note metadata |
 
 ### Request Examples
 
@@ -112,10 +116,10 @@ curl http://localhost:8080/api/tree
 # Get note content
 curl "http://localhost:8080/api/note?path=default/welcome.md"
 
-# Create a note
+# Create a note (author optional, defaults to "default")
 curl -X POST http://localhost:8080/api/note \
   -H "Content-Type: application/json" \
-  -d '{"path":"default","name":"new-note","is_dir":false,"content":"# New Note\n\n"}'
+  -d '{"path":"default","name":"new-note","is_dir":false,"author":"alice","content":"# New Note\n\n"}'
 
 # Update a note
 curl -X PUT "http://localhost:8080/api/note?path=default/new-note.md" \
@@ -124,6 +128,9 @@ curl -X PUT "http://localhost:8080/api/note?path=default/new-note.md" \
 
 # Delete a note
 curl -X DELETE "http://localhost:8080/api/note?path=default/new-note.md"
+
+# Search notes
+curl "http://localhost:8080/api/search?keyword=note"
 ```
 
 ## Environment Variables
@@ -165,6 +172,21 @@ storage:
     prefix: "mynote/"
 ```
 
+## Metadata Configuration
+
+Document metadata (path, name, author, edit time, etc.) is stored in a SQLite database, powering search and faster directory tree loading. Configure via the `meta` section in `backend/config.yaml`:
+
+```yaml
+meta:
+  db_path: ./data/mynote.db
+```
+
+- Database and tables are created automatically on first run
+- On startup, the service scans the storage layer and syncs metadata (inserts new entries, removes deleted ones)
+- All CRUD operations keep metadata in sync for consistency
+- SQLite runs in WAL mode for concurrent reads
+- Uses `modernc.org/sqlite` pure Go driver — no CGO or system SQLite install required
+
 ## Cloud Deployment
 
 1. **Build**: Run `.\scripts\build.ps1` to generate the deployment package
@@ -194,7 +216,7 @@ mynote/
 │   ├── main.go            # Entry point, routing, static file serving, config loading
 │   ├── config.yaml        # Storage configuration file
 │   ├── api/handler.go     # REST API handlers
-│   ├── service/note_service.go # Note service (depends on Storage interface)
+│   ├── service/note_service.go # Note service (depends on Storage + Meta interfaces)
 │   ├── storage/            # Pluggable storage layer
 │   │   ├── storage.go     # Storage interface definition
 │   │   ├── config.go      # Config structs
@@ -202,15 +224,18 @@ mynote/
 │   │   ├── local.go       # Local filesystem implementation
 │   │   ├── oss.go         # Object storage implementation (S3 compatible)
 │   │   └── storage.md     # Storage layer docs
-│   ├── models/note.go     # Data models
+│   ├── meta/               # Metadata layer (SQLite)
+│   │   ├── meta.go        # Meta interface definition
+│   │   └── sqlite.go      # SQLite implementation
+│   ├── models/note.go     # Data models (includes author, SearchResult)
 │   └── data/              # Note file storage directory (local storage mode)
 ├── frontend/               # Vue frontend
 │   └── src/
 │       ├── App.vue        # Root component
 │       ├── components/
-│       │   ├── Sidebar.vue     # Sidebar (directory tree + context menu)
+│       │   ├── Sidebar.vue     # Sidebar (directory tree + search + context menu)
 │       │   └── NoteEditor.vue  # Markdown editor
-│       └── api/index.js  # API request wrapper
+│       └── api/index.js  # API request wrapper (includes search)
 ├── scripts/
 │   ├── dev.ps1            # Development mode startup
 │   └── build.ps1          # Production build packaging

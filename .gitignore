@@ -13,6 +13,11 @@ backend/data/*
 backend/data/default/*
 !backend/data/default/示例笔记.md
 
+# SQLite 数据库文件
+*.db
+*.db-wal
+*.db-shm
+
 # IDE
 .vscode/
 .idea/

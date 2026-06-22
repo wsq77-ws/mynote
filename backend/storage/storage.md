@@ -7,9 +7,9 @@
 ```
 ┌─────────────────────────────────────────────┐
 │              service/note_service.go         │
-│         (业务逻辑，依赖 Storage 接口)          │
+│      (业务逻辑，依赖 Storage + Meta 接口)      │
 └──────────────────┬──────────────────────────┘
-                   │ Storage 接口
+                   │ Storage 接口        │ Meta 接口
 ┌──────────────────▼──────────────────────────┐
 │            storage/storage.go                │
 │              Storage 接口定义                 │
@@ -24,6 +24,10 @@
 │ os.ReadFile  │    │ MinIO / Aliyun OSS      │
 │ os.WriteFile │    │ Tencent COS / AWS S3    │
 └──────────────┘    └─────────────────────────┘
+
+注：元数据（路径、名称、作者、时间等）由 meta 包基于 SQLite
+独立管理，详见 backend/meta/meta.go。NoteService 在启动时通过
+Storage 扫描文件，再调用 Meta.SyncFromStorage 同步元数据。
 ```
 
 ## 文件说明

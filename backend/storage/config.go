@@ -3,6 +3,7 @@ package storage
 // Config 存储配置
 type Config struct {
 	Storage StorageConfig `yaml:"storage"`
+	Meta    MetaConfig    `yaml:"meta"`
 }
 
 // StorageConfig 存储后端配置
@@ -15,6 +16,12 @@ type StorageConfig struct {
 
 	// OSS 对象存储配置
 	OSS OSSConfig `yaml:"oss"`
+}
+
+// MetaConfig 元数据（SQLite）配置
+type MetaConfig struct {
+	// DBPath SQLite 数据库文件路径
+	DBPath string `yaml:"db_path"`
 }
 
 // LocalConfig 本地文件系统配置
@@ -55,6 +62,9 @@ func DefaultConfig() *Config {
 			Local: LocalConfig{
 				DataDir: "./data",
 			},
+		},
+		Meta: MetaConfig{
+			DBPath: "./data/mynote.db",
 		},
 	}
 }
