@@ -43,6 +43,9 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 # 复制后端
 Copy-Item (Join-Path $rootDir "backend\mynote-server.exe") $outputDir
 
+# 复制配置文件
+Copy-Item (Join-Path $rootDir "backend\config.yaml") $outputDir
+
 # 复制前端编译产物
 Copy-Item -Recurse (Join-Path $rootDir "frontend\dist") (Join-Path $outputDir "dist")
 

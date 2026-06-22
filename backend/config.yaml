@@ -40,3 +40,9 @@ storage:
 
     # 是否使用 SSL（HTTPS）
     use_ssl: true
+
+# 元数据配置（SQLite）
+meta:
+  # SQLite 数据库文件路径
+  # 默认存储在数据目录下
+  db_path: ./data/mynote.db

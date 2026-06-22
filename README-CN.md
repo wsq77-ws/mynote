@@ -2,6 +2,10 @@
 
 一个基于 Markdown 的本地知识笔记系统，支持层级目录结构，提供所见即所得的编辑体验。当前运行在本地，已为云端部署做好准备。
 
+## 界面预览
+
+![MyNote UI](demo.png)
+
 ## 功能特性
 
 - **Markdown 编辑** — 基于 md-editor-v3，支持代码高亮、表格、列表等丰富语法
@@ -10,6 +14,8 @@
 - **右键菜单** — 目录树支持右键新建笔记/目录、删除节点
 - **实时预览** — 所见即所得的编辑体验
 - **可插拔存储** — 支持本地文件系统和对象存储（S3 兼容），通过配置文件切换
+- **元数据管理** — 基于 SQLite 存储文档元数据（作者、路径、编辑时间等），支持作者标注
+- **文档搜索** — 侧边栏顶部搜索框，基于 SQLite 索引快速检索笔记
 - **一键部署** — 生产模式下后端自动服务前端静态文件，单端口运行
 
 ## 技术栈
@@ -19,6 +25,7 @@
 | **前端** | Vue 3 + Vite + Element Plus + md-editor-v3 |
 | **后端** | Go 1.23+ / Gin |
 | **存储** | 可插拔存储层：本地文件系统 / 对象存储（S3 兼容） |
+| **元数据** | SQLite（modernc.org/sqlite，纯 Go 无需 CGO） |
 
 ## 环境要求
 
@@ -97,9 +104,10 @@ cd backend && go build -o mynote-server.exe .
 | `GET` | `/api/health` | 健康检查 |
 | `GET` | `/api/tree?path=` | 获取目录树 |
 | `GET` | `/api/note?path=` | 获取笔记内容 |
-| `POST` | `/api/note` | 创建笔记或目录 |
+| `POST` | `/api/note` | 创建笔记或目录（可指定作者） |
 | `PUT` | `/api/note?path=` | 更新笔记内容 |
 | `DELETE` | `/api/note?path=` | 删除笔记或目录 |
+| `GET` | `/api/search?keyword=` | 搜索笔记元数据 |
 
 ### 请求示例
 
@@ -110,10 +118,10 @@ curl http://localhost:8080/api/tree
 # 获取笔记内容
 curl "http://localhost:8080/api/note?path=default/示例笔记.md"
 
-# 创建笔记
+# 创建笔记（author 可选，默认为 default）
 curl -X POST http://localhost:8080/api/note \
   -H "Content-Type: application/json" \
-  -d '{"path":"default","name":"新笔记","is_dir":false,"content":"# 新笔记\n\n"}'
+  -d '{"path":"default","name":"新笔记","is_dir":false,"author":"张三","content":"# 新笔记\n\n"}'
 
 # 更新笔记
 curl -X PUT "http://localhost:8080/api/note?path=default/新笔记.md" \
@@ -122,6 +130,9 @@ curl -X PUT "http://localhost:8080/api/note?path=default/新笔记.md" \
 
 # 删除笔记
 curl -X DELETE "http://localhost:8080/api/note?path=default/新笔记.md"
+
+# 搜索笔记
+curl "http://localhost:8080/api/search?keyword=笔记"
 ```
 
 ## 环境变量
@@ -163,6 +174,21 @@ storage:
     prefix: "mynote/"
 ```
 
+## 元数据配置
+
+文档元数据（路径、名称、作者、编辑时间等）存储在 SQLite 数据库中，用于支持搜索功能和加速目录树加载。通过 `backend/config.yaml` 的 `meta` 段配置：
+
+```yaml
+meta:
+  db_path: ./data/mynote.db
+```
+
+- 首次启动时自动创建数据库和表结构
+- 服务启动时会扫描存储层并同步元数据（新增的插入、已删除的清除）
+- 所有 CRUD 操作会同步更新元数据，保证一致性
+- SQLite 使用 WAL 模式，支持并发读
+- 使用 `modernc.org/sqlite` 纯 Go 驱动，无需安装 CGO / 系统 SQLite
+
 ## 云端部署
 
 1. **构建**：运行 `.\scripts\build.ps1` 生成部署包
@@ -190,9 +216,9 @@ export MYNOTE_PORT=80
 mynote/
 ├── backend/                # Go 后端
 │   ├── main.go            # 入口，路由，静态文件服务，配置加载
-│   ├── config.yaml        # 存储配置文件
+│   ├── config.yaml        # 存储配置 + 元数据配置
 │   ├── api/handler.go     # REST API 处理器
-│   ├── service/note_service.go # 笔记服务（依赖 Storage 接口）
+│   ├── service/note_service.go # 笔记服务（依赖 Storage + Meta 接口）
 │   ├── storage/            # 可插拔存储层
 │   │   ├── storage.go     # Storage 接口定义
 │   │   ├── config.go      # 配置结构体
@@ -200,15 +226,18 @@ mynote/
 │   │   ├── local.go       # 本地文件系统实现
 │   │   ├── oss.go         # 对象存储实现（S3 兼容）
 │   │   └── storage.md     # 存储层文档
-│   ├── models/note.go     # 数据模型
+│   ├── meta/               # 元数据管理层（SQLite）
+│   │   ├── meta.go        # Meta 接口定义
+│   │   └── sqlite.go      # SQLite 实现
+│   ├── models/note.go     # 数据模型（含 author、SearchResult）
 │   └── data/              # 笔记文件存储目录（本地存储模式）
 ├── frontend/               # Vue 前端
 │   └── src/
 │       ├── App.vue        # 根组件
 │       ├── components/
-│       │   ├── Sidebar.vue     # 侧边栏（目录树+右键菜单）
+│       │   ├── Sidebar.vue     # 侧边栏（目录树+搜索+右键菜单）
 │       │   └── NoteEditor.vue  # Markdown 编辑器
-│       └── api/index.js  # API 请求封装
+│       └── api/index.js  # API 请求封装（含搜索）
 ├── scripts/
 │   ├── dev.ps1            # 开发模式启动
 │   └── build.ps1          # 生产构建打包

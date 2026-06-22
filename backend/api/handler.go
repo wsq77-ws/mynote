@@ -29,6 +29,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 		api.POST("/note", h.CreateNote)
 		api.PUT("/note", h.UpdateNote)
 		api.DELETE("/note", h.DeleteNote)
+		api.GET("/search", h.Search)
 	}
 }
 
@@ -163,5 +164,32 @@ func (h *Handler) DeleteNote(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{
 		Code:    200,
 		Message: "删除成功",
+	})
+}
+
+// Search 搜索笔记
+func (h *Handler) Search(c *gin.Context) {
+	keyword := strings.TrimSpace(c.Query("q"))
+	if keyword == "" {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Code:    400,
+			Message: "搜索关键词不能为空",
+		})
+		return
+	}
+
+	results, err := h.svc.Search(keyword)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Code:    500,
+			Message: "搜索失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Code:    200,
+		Message: "success",
+		Data:    results,
 	})
 }

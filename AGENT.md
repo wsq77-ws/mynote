@@ -9,6 +9,7 @@
 | **前端** | Vue 3 + Vite + Element Plus + md-editor-v3 |
 | **后端** | Go 1.23+ / Gin |
 | **存储** | 可插拔存储层：本地文件系统 / 对象存储（S3 兼容） |
+| **元数据** | SQLite（modernc.org/sqlite，纯 Go 无需 CGO） |
 
 ## 项目结构
 
@@ -16,20 +17,23 @@
 mynote/
 ├── backend/                # Go 后端
 │   ├── main.go            # 入口，路由，静态文件服务，配置加载
-│   ├── config.yaml        # 存储配置文件（本地/对象存储切换）
+│   ├── config.yaml        # 存储配置 + 元数据配置
 │   ├── api/
 │   │   └── handler.go     # REST API 处理器
 │   ├── service/
-│   │   └── note_service.go # 笔记服务（依赖 Storage 接口）
+│   │   └── note_service.go # 笔记服务（依赖 Storage + Meta 接口）
 │   ├── storage/            # 可插拔存储层
 │   │   ├── storage.go     # Storage 接口定义
-│   │   ├── config.go      # 配置结构体
+│   │   ├── config.go      # 配置结构体（含 MetaConfig）
 │   │   ├── factory.go     # 工厂函数 + 配置加载
 │   │   ├── local.go       # 本地文件系统实现
 │   │   ├── oss.go         # 对象存储实现（S3 兼容）
 │   │   └── storage.md     # 存储层文档
+│   ├── meta/               # 元数据管理层（SQLite）
+│   │   ├── meta.go        # Meta 接口定义
+│   │   └── sqlite.go      # SQLite 实现
 │   ├── models/
-│   │   └── note.go        # 数据模型
+│   │   └── note.go        # 数据模型（含 author、SearchResult）
 │   ├── data/              # 笔记文件存储目录（本地存储模式）
 │   └── go.mod / go.sum
 ├── frontend/               # Vue 前端
@@ -38,10 +42,10 @@ mynote/
 │   │   ├── main.js             # 入口
 │   │   ├── style.css           # 全局样式
 │   │   ├── components/
-│   │   │   ├── Sidebar.vue     # 侧边栏（目录树+右键菜单）
+│   │   │   ├── Sidebar.vue     # 侧边栏（目录树+搜索+右键菜单）
 │   │   │   └── NoteEditor.vue  # Markdown 编辑器
 │   │   └── api/
-│   │       └── index.js        # API 请求封装
+│   │       └── index.js        # API 请求封装（含搜索）
 │   ├── index.html
 │   ├── vite.config.js
 │   └── package.json
@@ -63,6 +67,7 @@ mynote/
 | `POST` | `/api/note` | 创建笔记或目录 |
 | `PUT` | `/api/note` | 更新笔记内容 |
 | `DELETE` | `/api/note` | 删除笔记或目录 |
+| `GET` | `/api/search` | 搜索笔记（基于 SQLite 元数据） |
 
 ### 接口参数详情
 
@@ -80,7 +85,7 @@ mynote/
 |--------|------|------|------|--------|------|
 | `path` | query | string | 否 | `.`（根目录） | 要获取的目录相对路径 |
 
-**响应 Data**: `TreeNode[]`，每个节点包含 `name`、`path`、`type`（`file`/`directory`）、`children`。
+**响应 Data**: `TreeNode[]`，每个节点包含 `name`、`path`、`type`（`file`/`directory`）、`author`、`updated_at`、`children`。
 
 ---
 
@@ -91,7 +96,7 @@ mynote/
 |--------|------|------|------|--------|------|
 | `path` | query | string | **是** | - | 笔记相对路径，如 `default/示例笔记.md`。可不带 `.md` 后缀 |
 
-**响应 Data**: `Note` 对象，包含 `path`、`name`、`content`、`updated_at`。
+**响应 Data**: `Note` 对象，包含 `path`、`name`、`author`、`content`、`updated_at`。
 
 ---
 
@@ -103,6 +108,7 @@ mynote/
 | `path` | body | string | 否 | `default` | 父目录相对路径。为空时自动使用 `default` 目录 |
 | `name` | body | string | **是** | - | 笔记或目录名称（笔记可不带 `.md` 后缀） |
 | `is_dir` | body | bool | 否 | `false` | `true` 创建目录，`false` 创建笔记 |
+| `author` | body | string | 否 | `default` | 文档作者姓名。为空时使用 `default` |
 | `content` | body | string | 否 | `""` | 笔记初始内容（创建目录时忽略） |
 
 **请求示例**:
@@ -111,6 +117,7 @@ mynote/
   "path": "default",
   "name": "新笔记",
   "is_dir": false,
+  "author": "张三",
   "content": "# 新笔记\n\n"
 }
 ```
@@ -138,6 +145,19 @@ mynote/
 | 参数名 | 位置 | 类型 | 必填 | 默认值 | 说明 |
 |--------|------|------|------|--------|------|
 | `path` | query | string | **是** | - | 要删除的笔记或目录相对路径 |
+
+---
+
+#### `GET /api/search`
+按关键词搜索笔记元数据（基于 SQLite `LIKE` 查询，匹配 `name`、`path`、`author`）。
+
+| 参数名 | 位置 | 类型 | 必填 | 默认值 | 说明 |
+|--------|------|------|------|--------|------|
+| `keyword` | query | string | **是** | - | 搜索关键词，不能为空 |
+
+**响应 Data**: `SearchResult[]`，每项包含 `path`、`name`、`is_dir`、`author`、`updated_at`。
+
+**请求示例**: `GET /api/search?keyword=笔记`
 
 ### 通用响应格式
 
@@ -178,15 +198,17 @@ mynote/
 
 ## 后端开发规则
 
-> **重要**：每次做后端改动时，都必须确认存储层接口的一致性！
+> **重要**：每次做后端改动时，都必须确认存储层和元数据层接口的一致性！
 
 ### 检查清单
 
-1. **Storage 接口** — 所有笔记操作必须通过 `Storage` 接口，不能直接调用 `os.ReadFile`/`os.WriteFile` 等文件系统 API
-2. **路径格式** — 传给 Storage 接口的路径使用 `/` 分隔的相对路径（如 `default/子目录/笔记.md`），不要使用 `filepath.Join`
-3. **新增存储后端** — 必须实现 `Storage` 接口的所有方法，并在 `factory.go` 中注册
-4. **配置变更** — 修改配置结构体时，同步更新 `config.yaml` 和 `storage.md` 文档
-5. **业务逻辑与存储分离** — `note_service.go` 只包含业务逻辑，不包含存储实现细节
+1. **Storage 接口** — 所有笔记文件操作必须通过 `Storage` 接口，不能直接调用 `os.ReadFile`/`os.WriteFile` 等文件系统 API
+2. **Meta 接口** — 所有元数据操作必须通过 `Meta` 接口，不能在业务层直接写 SQL；元数据变更必须与文件操作保持一致
+3. **路径格式** — 传给 Storage / Meta 接口的路径使用 `/` 分隔的相对路径（如 `default/子目录/笔记.md`），不要使用 `filepath.Join`
+4. **新增存储后端** — 必须实现 `Storage` 接口的所有方法，并在 `factory.go` 中注册
+5. **新增元数据后端** — 必须实现 `Meta` 接口的所有方法，并在 `main.go` 中初始化
+6. **配置变更** — 修改配置结构体时，同步更新 `config.yaml` 和 `storage.md` 文档
+7. **业务逻辑与存储分离** — `note_service.go` 只包含业务逻辑，不包含存储/元数据实现细节
 
 ## 快速开始
 
@@ -270,6 +292,62 @@ storage:
 1. 在 `storage/` 下创建新文件实现 `Storage` 接口
 2. 在 `factory.go` 的 `New()` 中添加对应 `case`
 3. 在 `config.go` 中添加配置结构体
+
+## 元数据层
+
+元数据层提供统一的 `Meta` 接口，基于 SQLite 存储文档元数据（路径、名称、作者、是否目录、创建/更新时间），用于支持搜索功能和加速目录树加载。详见 [meta/meta.go](file:///d:/workspace/mynote/backend/meta/meta.go)。
+
+### 数据表结构
+
+```sql
+CREATE TABLE notes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    path       TEXT NOT NULL UNIQUE,
+    name       TEXT NOT NULL,
+    is_dir     INTEGER NOT NULL DEFAULT 0,
+    author     TEXT NOT NULL DEFAULT 'default',
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL
+);
+CREATE INDEX idx_notes_name    ON notes(name);
+CREATE INDEX idx_notes_author  ON notes(author);
+CREATE INDEX idx_notes_is_dir  ON notes(is_dir);
+```
+
+### 配置
+
+```yaml
+# 元数据配置（SQLite）
+meta:
+  db_path: ./data/mynote.db
+```
+
+### Meta 接口
+
+| 方法 | 说明 |
+|------|------|
+| `Init()` | 初始化（建表、索引） |
+| `Close()` | 关闭数据库连接 |
+| `UpsertNote(meta)` | 插入或更新一条元数据 |
+| `GetNoteByPath(path)` | 按路径查询单条元数据 |
+| `GetAllNotes()` | 获取全部元数据 |
+| `GetChildren(dirPath)` | 获取某目录下的直接子项 |
+| `DeleteNote(path)` | 删除一条元数据 |
+| `Search(keyword)` | 按关键词搜索（匹配 name/path/author） |
+| `SyncFromStorage(entries)` | 用存储层扫描结果同步元数据 |
+
+### 加载流程
+
+`NoteService` 启动时会：
+1. 调用 `Storage.ListDir` 递归扫描所有文件和目录
+2. 调用 `Meta.SyncFromStorage` 将扫描结果同步到 SQLite（新增的插入，已删除的清除）
+3. 后续 CRUD 操作会同步更新 SQLite 元数据
+4. `/api/tree` 和 `/api/search` 优先从 SQLite 读取元数据，再按需加载文件内容
+
+### 扩展元数据后端
+
+1. 在 `meta/` 下创建新文件实现 `Meta` 接口
+2. 在 `main.go` 中添加对应初始化逻辑
 
 ## 云端部署
 
