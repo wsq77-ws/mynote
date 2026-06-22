@@ -4,6 +4,10 @@ A Markdown-based local knowledge note system with hierarchical directory structu
 
 [中文文档](README-CN.md)
 
+## UI Preview
+
+![MyNote UI](demo.png)
+
 ## Features
 
 - **Markdown Editing** — Powered by md-editor-v3, supports code highlighting, tables, lists, and more
