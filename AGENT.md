@@ -8,21 +8,29 @@
 |------|------|
 | **前端** | Vue 3 + Vite + Element Plus + md-editor-v3 |
 | **后端** | Go 1.23+ / Gin |
-| **存储** | 本地文件系统（`.md` 文件） |
+| **存储** | 可插拔存储层：本地文件系统 / 对象存储（S3 兼容） |
 
 ## 项目结构
 
 ```
 mynote/
 ├── backend/                # Go 后端
-│   ├── main.go            # 入口，路由，静态文件服务
+│   ├── main.go            # 入口，路由，静态文件服务，配置加载
+│   ├── config.yaml        # 存储配置文件（本地/对象存储切换）
 │   ├── api/
 │   │   └── handler.go     # REST API 处理器
 │   ├── service/
-│   │   └── note_service.go # 笔记服务（文件存储逻辑）
+│   │   └── note_service.go # 笔记服务（依赖 Storage 接口）
+│   ├── storage/            # 可插拔存储层
+│   │   ├── storage.go     # Storage 接口定义
+│   │   ├── config.go      # 配置结构体
+│   │   ├── factory.go     # 工厂函数 + 配置加载
+│   │   ├── local.go       # 本地文件系统实现
+│   │   ├── oss.go         # 对象存储实现（S3 兼容）
+│   │   └── storage.md     # 存储层文档
 │   ├── models/
 │   │   └── note.go        # 数据模型
-│   ├── data/              # 笔记文件存储目录
+│   ├── data/              # 笔记文件存储目录（本地存储模式）
 │   └── go.mod / go.sum
 ├── frontend/               # Vue 前端
 │   ├── src/
@@ -168,6 +176,18 @@ mynote/
 
 所有后端 API 调用封装在 [src/api/index.js](file:///d:/workspace/mynote/frontend/src/api/index.js)，修改接口调用时优先更新此文件。
 
+## 后端开发规则
+
+> **重要**：每次做后端改动时，都必须确认存储层接口的一致性！
+
+### 检查清单
+
+1. **Storage 接口** — 所有笔记操作必须通过 `Storage` 接口，不能直接调用 `os.ReadFile`/`os.WriteFile` 等文件系统 API
+2. **路径格式** — 传给 Storage 接口的路径使用 `/` 分隔的相对路径（如 `default/子目录/笔记.md`），不要使用 `filepath.Join`
+3. **新增存储后端** — 必须实现 `Storage` 接口的所有方法，并在 `factory.go` 中注册
+4. **配置变更** — 修改配置结构体时，同步更新 `config.yaml` 和 `storage.md` 文档
+5. **业务逻辑与存储分离** — `note_service.go` 只包含业务逻辑，不包含存储实现细节
+
 ## 快速开始
 
 ### 开发模式
@@ -207,10 +227,49 @@ cd backend && go build -o mynote-server.exe .
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `MYNOTE_DATA_DIR` | 笔记数据目录 | `backend/data/` |
+| `MYNOTE_CONFIG` | 配置文件路径 | `config.yaml` |
+| `MYNOTE_DATA_DIR` | 笔记数据目录（覆盖配置文件中的 `local.data_dir`） | `./data` |
 | `MYNOTE_DIST_DIR` | 前端静态文件目录 | `../frontend/dist/` |
 | `MYNOTE_PORT` | 服务端口 | `8080` |
 | `GIN_MODE` | Gin 运行模式 | `debug` |
+
+## 存储层
+
+存储层提供统一的 `Storage` 接口，支持多种存储后端，通过 `backend/config.yaml` 切换。详见 [storage/storage.md](file:///d:/workspace/mynote/backend/storage/storage.md)。
+
+### 配置文件
+
+```yaml
+# 本地文件系统（默认）
+storage:
+  type: local
+  local:
+    data_dir: ./data
+
+# 对象存储（S3 兼容）
+storage:
+  type: oss
+  oss:
+    endpoint: "http://localhost:9000"
+    access_key: "xxx"
+    secret_key: "xxx"
+    bucket: "mynote"
+    region: "us-east-1"
+    prefix: "mynote/"
+```
+
+### 支持的存储后端
+
+| 类型 | 说明 | 适用场景 |
+|------|------|----------|
+| `local` | 本地文件系统 | 本地开发、单机部署 |
+| `oss` | 对象存储（S3 兼容） | 云端部署、分布式场景 |
+
+### 扩展存储后端
+
+1. 在 `storage/` 下创建新文件实现 `Storage` 接口
+2. 在 `factory.go` 的 `New()` 中添加对应 `case`
+3. 在 `config.go` 中添加配置结构体
 
 ## 云端部署
 

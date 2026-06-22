@@ -11,7 +11,7 @@ A Markdown-based local knowledge note system with hierarchical directory structu
 - **Auto Save** — Content is automatically saved 2 seconds after editing stops, with manual save option
 - **Context Menu** — Right-click on the tree to create notes/directories or delete nodes
 - **Live Preview** — WYSIWYG editing experience
-- **File Storage** — Notes stored as `.md` files for easy backup and migration
+- **Pluggable Storage** — Supports local filesystem and object storage (S3 compatible), switchable via config file
 - **One-Click Deployment** — In production mode, the backend serves frontend static files on a single port
 
 ## Tech Stack
@@ -20,7 +20,7 @@ A Markdown-based local knowledge note system with hierarchical directory structu
 |-------|------------|
 | **Frontend** | Vue 3 + Vite + Element Plus + md-editor-v3 |
 | **Backend** | Go 1.23+ / Gin |
-| **Storage** | Local file system (`.md` files) |
+| **Storage** | Pluggable storage layer: local filesystem / object storage (S3 compatible) |
 
 ## Prerequisites
 
@@ -130,10 +130,40 @@ curl -X DELETE "http://localhost:8080/api/note?path=default/new-note.md"
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MYNOTE_DATA_DIR` | Note data directory | `backend/data/` |
+| `MYNOTE_CONFIG` | Config file path | `config.yaml` |
+| `MYNOTE_DATA_DIR` | Note data directory (overrides config file) | `./data` |
 | `MYNOTE_DIST_DIR` | Frontend static files directory | `../frontend/dist/` |
 | `MYNOTE_PORT` | Service port | `8080` |
 | `GIN_MODE` | Gin run mode (`debug`/`release`) | `debug` |
+
+## Storage Configuration
+
+Note data supports multiple storage backends, switchable via `backend/config.yaml`. See [storage/storage.md](file:///d:/workspace/mynote/backend/storage/storage.md) for details.
+
+### Local Filesystem (default)
+
+```yaml
+storage:
+  type: local
+  local:
+    data_dir: ./data
+```
+
+### Object Storage (S3 Compatible)
+
+Supports AWS S3, MinIO, Alibaba Cloud OSS, Tencent Cloud COS, etc.:
+
+```yaml
+storage:
+  type: oss
+  oss:
+    endpoint: "http://localhost:9000"
+    access_key: "your-access-key"
+    secret_key: "your-secret-key"
+    bucket: "mynote"
+    region: "us-east-1"
+    prefix: "mynote/"
+```
 
 ## Cloud Deployment
 
@@ -161,11 +191,19 @@ export MYNOTE_PORT=80
 ```
 mynote/
 ├── backend/                # Go backend
-│   ├── main.go            # Entry point, routing, static file serving
+│   ├── main.go            # Entry point, routing, static file serving, config loading
+│   ├── config.yaml        # Storage configuration file
 │   ├── api/handler.go     # REST API handlers
-│   ├── service/note_service.go # Note service (file storage logic)
+│   ├── service/note_service.go # Note service (depends on Storage interface)
+│   ├── storage/            # Pluggable storage layer
+│   │   ├── storage.go     # Storage interface definition
+│   │   ├── config.go      # Config structs
+│   │   ├── factory.go     # Factory function + config loading
+│   │   ├── local.go       # Local filesystem implementation
+│   │   ├── oss.go         # Object storage implementation (S3 compatible)
+│   │   └── storage.md     # Storage layer docs
 │   ├── models/note.go     # Data models
-│   └── data/              # Note file storage directory
+│   └── data/              # Note file storage directory (local storage mode)
 ├── frontend/               # Vue frontend
 │   └── src/
 │       ├── App.vue        # Root component

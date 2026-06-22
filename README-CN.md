@@ -9,7 +9,7 @@
 - **自动保存** — 编辑内容 2 秒自动保存，也可手动保存
 - **右键菜单** — 目录树支持右键新建笔记/目录、删除节点
 - **实时预览** — 所见即所得的编辑体验
-- **文件存储** — 笔记以 `.md` 文件形式存储，便于备份和迁移
+- **可插拔存储** — 支持本地文件系统和对象存储（S3 兼容），通过配置文件切换
 - **一键部署** — 生产模式下后端自动服务前端静态文件，单端口运行
 
 ## 技术栈
@@ -18,7 +18,7 @@
 |------|------|
 | **前端** | Vue 3 + Vite + Element Plus + md-editor-v3 |
 | **后端** | Go 1.23+ / Gin |
-| **存储** | 本地文件系统（`.md` 文件） |
+| **存储** | 可插拔存储层：本地文件系统 / 对象存储（S3 兼容） |
 
 ## 环境要求
 
@@ -128,10 +128,40 @@ curl -X DELETE "http://localhost:8080/api/note?path=default/新笔记.md"
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `MYNOTE_DATA_DIR` | 笔记数据目录 | `backend/data/` |
+| `MYNOTE_CONFIG` | 配置文件路径 | `config.yaml` |
+| `MYNOTE_DATA_DIR` | 笔记数据目录（覆盖配置文件） | `./data` |
 | `MYNOTE_DIST_DIR` | 前端静态文件目录 | `../frontend/dist/` |
 | `MYNOTE_PORT` | 服务端口 | `8080` |
 | `GIN_MODE` | Gin 运行模式（`debug`/`release`） | `debug` |
+
+## 存储配置
+
+笔记数据支持多种存储后端，通过 `backend/config.yaml` 配置文件切换。详见 [storage/storage.md](file:///d:/workspace/mynote/backend/storage/storage.md)。
+
+### 本地文件系统（默认）
+
+```yaml
+storage:
+  type: local
+  local:
+    data_dir: ./data
+```
+
+### 对象存储（S3 兼容）
+
+支持 AWS S3、MinIO、阿里云 OSS、腾讯云 COS 等：
+
+```yaml
+storage:
+  type: oss
+  oss:
+    endpoint: "http://localhost:9000"
+    access_key: "your-access-key"
+    secret_key: "your-secret-key"
+    bucket: "mynote"
+    region: "us-east-1"
+    prefix: "mynote/"
+```
 
 ## 云端部署
 
@@ -159,11 +189,19 @@ export MYNOTE_PORT=80
 ```
 mynote/
 ├── backend/                # Go 后端
-│   ├── main.go            # 入口，路由，静态文件服务
+│   ├── main.go            # 入口，路由，静态文件服务，配置加载
+│   ├── config.yaml        # 存储配置文件
 │   ├── api/handler.go     # REST API 处理器
-│   ├── service/note_service.go # 笔记服务（文件存储逻辑）
+│   ├── service/note_service.go # 笔记服务（依赖 Storage 接口）
+│   ├── storage/            # 可插拔存储层
+│   │   ├── storage.go     # Storage 接口定义
+│   │   ├── config.go      # 配置结构体
+│   │   ├── factory.go     # 工厂函数 + 配置加载
+│   │   ├── local.go       # 本地文件系统实现
+│   │   ├── oss.go         # 对象存储实现（S3 兼容）
+│   │   └── storage.md     # 存储层文档
 │   ├── models/note.go     # 数据模型
-│   └── data/              # 笔记文件存储目录
+│   └── data/              # 笔记文件存储目录（本地存储模式）
 ├── frontend/               # Vue 前端
 │   └── src/
 │       ├── App.vue        # 根组件
