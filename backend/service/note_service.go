@@ -2,56 +2,51 @@ package service
 
 import (
 	"mynote-backend/models"
-	"os"
-	"path/filepath"
+	"mynote-backend/storage"
 	"sort"
 	"strings"
 	"time"
 )
 
-// NoteService 笔记服务
-type NoteService struct {
-	DataDir string
-}
-
 // DefaultDir 默认目录名
 const DefaultDir = "default"
 
+// NoteService 笔记服务
+type NoteService struct {
+	storage storage.Storage
+}
+
 // NewNoteService 创建笔记服务
-func NewNoteService(dataDir string) *NoteService {
-	// 确保数据目录存在
-	os.MkdirAll(dataDir, 0755)
+func NewNoteService(s storage.Storage) *NoteService {
 	// 确保默认目录存在
-	os.MkdirAll(filepath.Join(dataDir, DefaultDir), 0755)
-	return &NoteService{DataDir: dataDir}
+	s.Mkdir(DefaultDir)
+	return &NoteService{storage: s}
 }
 
 // GetTree 获取目录树
 func (s *NoteService) GetTree(dirPath string) ([]*models.TreeNode, error) {
-	absPath := filepath.Join(s.DataDir, dirPath)
-	entries, err := os.ReadDir(absPath)
+	entries, err := s.storage.List(dirPath)
 	if err != nil {
 		return nil, err
 	}
 
 	var nodes []*models.TreeNode
 	for _, entry := range entries {
-		name := entry.Name()
+		name := entry.Name
 		// 跳过隐藏文件和目录
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
 
-		relPath := filepath.Join(dirPath, name)
 		node := &models.TreeNode{
 			Name: name,
-			Path: filepath.ToSlash(relPath),
+			Path: entry.Path,
 		}
 
-		if entry.IsDir() {
+		if entry.IsDir {
 			node.Type = models.TypeDirectory
 			// 递归获取子节点
-			children, err := s.GetTree(relPath)
+			children, err := s.GetTree(entry.Path)
 			if err == nil && len(children) > 0 {
 				node.Children = children
 			} else {
@@ -80,33 +75,27 @@ func (s *NoteService) GetTree(dirPath string) ([]*models.TreeNode, error) {
 
 // GetNote 获取笔记内容
 func (s *NoteService) GetNote(path string) (*models.Note, error) {
-	absPath := filepath.Join(s.DataDir, path)
 	// 确保是 .md 文件
-	if !strings.HasSuffix(absPath, ".md") {
-		absPath += ".md"
+	if !strings.HasSuffix(path, ".md") {
+		path += ".md"
 	}
 
-	info, err := os.Stat(absPath)
+	content, modTime, err := s.storage.Read(path)
 	if err != nil {
 		return nil, err
 	}
 
-	content, err := os.ReadFile(absPath)
-	if err != nil {
-		return nil, err
+	name := path
+	if idx := strings.LastIndex(name, "/"); idx >= 0 {
+		name = name[idx+1:]
 	}
-
-	name := strings.TrimSuffix(info.Name(), ".md")
-	relPath := filepath.ToSlash(path)
-	if !strings.HasSuffix(relPath, ".md") {
-		relPath += ".md"
-	}
+	name = strings.TrimSuffix(name, ".md")
 
 	return &models.Note{
-		Path:      relPath,
+		Path:      path,
 		Name:      name,
-		Content:   string(content),
-		UpdatedAt: info.ModTime(),
+		Content:   content,
+		UpdatedAt: modTime,
 	}, nil
 }
 
@@ -120,55 +109,37 @@ func (s *NoteService) CreateNote(req models.CreateNoteRequest) error {
 	}
 
 	if req.IsDir {
-		absPath := filepath.Join(s.DataDir, dirPath, req.Name)
-		return os.MkdirAll(absPath, 0755)
+		fullPath := dirPath + "/" + req.Name
+		return s.storage.Mkdir(fullPath)
 	}
 
 	// 创建笔记
-	absDirPath := filepath.Join(s.DataDir, dirPath)
-	os.MkdirAll(absDirPath, 0755)
-
 	fileName := req.Name
 	if !strings.HasSuffix(fileName, ".md") {
 		fileName += ".md"
 	}
 
-	absPath := filepath.Join(absDirPath, fileName)
-	return os.WriteFile(absPath, []byte(req.Content), 0644)
+	fullPath := dirPath + "/" + fileName
+	return s.storage.Write(fullPath, req.Content)
 }
 
 // UpdateNote 更新笔记内容
 func (s *NoteService) UpdateNote(path string, req models.UpdateNoteRequest) error {
-	absPath := filepath.Join(s.DataDir, path)
-	if !strings.HasSuffix(absPath, ".md") {
-		absPath += ".md"
+	if !strings.HasSuffix(path, ".md") {
+		path += ".md"
 	}
-	return os.WriteFile(absPath, []byte(req.Content), 0644)
+	return s.storage.Write(path, req.Content)
 }
 
 // DeleteNode 删除笔记或目录
 func (s *NoteService) DeleteNode(path string) error {
-	absPath := filepath.Join(s.DataDir, path)
-	info, err := os.Stat(absPath)
-	if err != nil {
-		return err
-	}
-
-	if info.IsDir() {
-		return os.RemoveAll(absPath)
-	}
-	return os.Remove(absPath)
+	return s.storage.Delete(path)
 }
 
 // GetNoteModTime 获取笔记修改时间
 func (s *NoteService) GetNoteModTime(path string) (time.Time, error) {
-	absPath := filepath.Join(s.DataDir, path)
-	if !strings.HasSuffix(absPath, ".md") {
-		absPath += ".md"
+	if !strings.HasSuffix(path, ".md") {
+		path += ".md"
 	}
-	info, err := os.Stat(absPath)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return info.ModTime(), nil
+	return s.storage.GetModTime(path)
 }

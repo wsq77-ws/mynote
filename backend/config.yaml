@@ -1,0 +1,42 @@
+# MyNote 存储配置文件
+# 修改此文件来切换笔记的存储后端
+
+storage:
+  # 存储类型: "local"（本地文件系统）或 "oss"（对象存储）
+  # 默认为 local
+  type: local
+
+  # 本地文件系统配置
+  local:
+    # 笔记数据目录路径
+    # 可使用相对路径（相对于可执行文件）或绝对路径
+    data_dir: ./data
+
+  # 对象存储配置（兼容 S3 协议）
+  # 支持 AWS S3、MinIO、阿里云 OSS、腾讯云 COS 等
+  # 取消注释并填写相应信息即可启用
+  oss:
+    # 服务端点
+    # AWS S3: https://s3.us-east-1.amazonaws.com
+    # MinIO:  http://localhost:9000
+    # 阿里云:  https://oss-cn-hangzhou.aliyuncs.com
+    endpoint: ""
+
+    # 访问密钥
+    access_key: ""
+
+    # 秘密密钥
+    secret_key: ""
+
+    # 存储桶名称
+    bucket: ""
+
+    # 区域
+    region: "us-east-1"
+
+    # 键前缀，所有笔记将存储在此前缀下
+    # 例如 "mynote/" 表示所有笔记存储在 mynote/ 前缀下
+    prefix: "mynote/"
+
+    # 是否使用 SSL（HTTPS）
+    use_ssl: true

@@ -7,8 +7,11 @@ frontend/dist/
 frontend/node_modules/
 backend/vendor/
 
-# 数据目录（笔记文件）
-backend/data/
+# 数据目录（笔记文件）— 忽略所有，仅保留示例笔记
+backend/data/*
+!backend/data/default
+backend/data/default/*
+!backend/data/default/示例笔记.md
 
 # IDE
 .vscode/
