@@ -1,181 +1,183 @@
-# MyNote - 在线知识笔记系统
+# MyNote - Online Knowledge Note System
 
-一个基于 Markdown 的本地知识笔记系统，支持层级目录结构，提供所见即所得的编辑体验。当前运行在本地，已为云端部署做好准备。
+A Markdown-based local knowledge note system with hierarchical directory structure and WYSIWYG editing experience. Currently runs locally, with cloud deployment readiness built in.
 
-## 功能特性
+[中文文档](README-CN.md)
 
-- **Markdown 编辑** — 基于 md-editor-v3，支持代码高亮、表格、列表等丰富语法
-- **层级目录树** — 左侧目录树支持无限层级嵌套，目录/笔记分类管理
-- **自动保存** — 编辑内容 2 秒自动保存，也可手动保存
-- **右键菜单** — 目录树支持右键新建笔记/目录、删除节点
-- **实时预览** — 所见即所得的编辑体验
-- **文件存储** — 笔记以 `.md` 文件形式存储，便于备份和迁移
-- **一键部署** — 生产模式下后端自动服务前端静态文件，单端口运行
+## Features
 
-## 技术栈
+- **Markdown Editing** — Powered by md-editor-v3, supports code highlighting, tables, lists, and more
+- **Hierarchical Directory Tree** — Sidebar tree with unlimited nesting for organizing notes and folders
+- **Auto Save** — Content is automatically saved 2 seconds after editing stops, with manual save option
+- **Context Menu** — Right-click on the tree to create notes/directories or delete nodes
+- **Live Preview** — WYSIWYG editing experience
+- **File Storage** — Notes stored as `.md` files for easy backup and migration
+- **One-Click Deployment** — In production mode, the backend serves frontend static files on a single port
 
-| 层级 | 技术 |
-|------|------|
-| **前端** | Vue 3 + Vite + Element Plus + md-editor-v3 |
-| **后端** | Go 1.23+ / Gin |
-| **存储** | 本地文件系统（`.md` 文件） |
+## Tech Stack
 
-## 环境要求
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | Vue 3 + Vite + Element Plus + md-editor-v3 |
+| **Backend** | Go 1.23+ / Gin |
+| **Storage** | Local file system (`.md` files) |
 
-- [Node.js](https://nodejs.org/) 18+（含 npm）
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) 18+ (includes npm)
 - [Go](https://go.dev/dl/) 1.23+
 
-## 快速开始
+## Quick Start
 
-### 开发模式
+### Development Mode
 
-前端和后端分开运行，支持热重载。
+Frontend and backend run separately with hot reload.
 
-**方式一：一键启动（推荐）**
+**Option 1: One-click startup (recommended)**
 
-双击项目根目录的 `start-dev.bat`。
+Double-click `start-dev.bat` in the project root.
 
-**方式二：分别启动**
+**Option 2: Start separately**
 
 ```bash
-# 终端1 - 启动后端
+# Terminal 1 - Backend
 cd backend
 go run main.go
 
-# 终端2 - 启动前端
+# Terminal 2 - Frontend
 cd frontend
 npm install
 npm run dev
 ```
 
-启动后访问：
-- 前端页面：http://localhost:3000
-- 后端 API：http://localhost:8080
+Access after startup:
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8080
 
-> 开发模式下，前端通过 Vite 代理将 `/api` 请求转发到后端 8080 端口。
+> In development mode, the frontend proxies `/api` requests to the backend on port 8080 via Vite.
 
-### 生产构建
+### Production Build
 
 ```bash
-# 使用构建脚本（PowerShell）
+# Using build script (PowerShell)
 .\scripts\build.ps1
 
-# 或手动构建
+# Or build manually
 cd frontend && npm run build
 cd backend && go build -o mynote-server.exe .
 ```
 
-构建产物位于 `build/` 目录：
-- `mynote-server.exe` — 后端可执行文件
-- `dist/` — 前端静态文件
-- `data/` — 笔记数据目录
-- `start.bat` — 启动脚本
+Build output is in the `build/` directory:
+- `mynote-server.exe` — Backend executable
+- `dist/` — Frontend static files
+- `data/` — Note data directory
+- `start.bat` — Startup script
 
-运行方式：双击 `build/start.bat`，或直接执行 `mynote-server.exe`，访问 http://localhost:8080。
+To run: double-click `build/start.bat`, or execute `mynote-server.exe` directly, then visit http://localhost:8080.
 
-## 使用指南
+## Usage Guide
 
-### 创建笔记
+### Create a Note
 
-1. 点击侧边栏顶部「新建」按钮，在根目录创建笔记
-2. 或在目录树上右键目录，选择「新建笔记」/「新建目录」
+1. Click the "New" button at the top of the sidebar to create a note in the default directory
+2. Or right-click a directory in the tree and select "New Note" / "New Directory"
 
-### 编辑笔记
+### Edit a Note
 
-1. 在左侧目录树点击任意笔记文件
-2. 在右侧编辑器中编写 Markdown 内容
-3. 内容会在停止输入 2 秒后自动保存，也可点击「保存」按钮手动保存
+1. Click any note file in the left sidebar tree
+2. Write Markdown content in the right editor
+3. Content auto-saves 2 seconds after you stop typing, or click "Save" manually
 
-### 删除笔记
+### Delete a Note
 
-在目录树上右键笔记或目录，选择「删除」。
+Right-click a note or directory in the tree and select "Delete".
 
 ## REST API
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| `GET` | `/api/health` | 健康检查 |
-| `GET` | `/api/tree?path=` | 获取目录树 |
-| `GET` | `/api/note?path=` | 获取笔记内容 |
-| `POST` | `/api/note` | 创建笔记或目录 |
-| `PUT` | `/api/note?path=` | 更新笔记内容 |
-| `DELETE` | `/api/note?path=` | 删除笔记或目录 |
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/health` | Health check |
+| `GET` | `/api/tree?path=` | Get directory tree |
+| `GET` | `/api/note?path=` | Get note content |
+| `POST` | `/api/note` | Create note or directory |
+| `PUT` | `/api/note?path=` | Update note content |
+| `DELETE` | `/api/note?path=` | Delete note or directory |
 
-### 请求示例
+### Request Examples
 
 ```bash
-# 获取目录树
+# Get directory tree
 curl http://localhost:8080/api/tree
 
-# 获取笔记内容
-curl "http://localhost:8080/api/note?path=示例笔记.md"
+# Get note content
+curl "http://localhost:8080/api/note?path=default/welcome.md"
 
-# 创建笔记
+# Create a note
 curl -X POST http://localhost:8080/api/note \
   -H "Content-Type: application/json" \
-  -d '{"path":"","name":"新笔记","is_dir":false,"content":"# 新笔记\n\n"}'
+  -d '{"path":"default","name":"new-note","is_dir":false,"content":"# New Note\n\n"}'
 
-# 更新笔记
-curl -X PUT "http://localhost:8080/api/note?path=新笔记.md" \
+# Update a note
+curl -X PUT "http://localhost:8080/api/note?path=default/new-note.md" \
   -H "Content-Type: application/json" \
-  -d '{"content":"# 更新后的内容\n\n"}'
+  -d '{"content":"# Updated content\n\n"}'
 
-# 删除笔记
-curl -X DELETE "http://localhost:8080/api/note?path=新笔记.md"
+# Delete a note
+curl -X DELETE "http://localhost:8080/api/note?path=default/new-note.md"
 ```
 
-## 环境变量
+## Environment Variables
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `MYNOTE_DATA_DIR` | 笔记数据目录 | `backend/data/` |
-| `MYNOTE_DIST_DIR` | 前端静态文件目录 | `../frontend/dist/` |
-| `MYNOTE_PORT` | 服务端口 | `8080` |
-| `GIN_MODE` | Gin 运行模式（`debug`/`release`） | `debug` |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MYNOTE_DATA_DIR` | Note data directory | `backend/data/` |
+| `MYNOTE_DIST_DIR` | Frontend static files directory | `../frontend/dist/` |
+| `MYNOTE_PORT` | Service port | `8080` |
+| `GIN_MODE` | Gin run mode (`debug`/`release`) | `debug` |
 
-## 云端部署
+## Cloud Deployment
 
-1. **构建**：运行 `.\scripts\build.ps1` 生成部署包
-2. **上传**：将 `build/` 目录内容上传到服务器
-3. **配置**：通过环境变量配置数据目录、端口等
-4. **运行**：执行 `mynote-server`（Linux）或 `mynote-server.exe`（Windows）
+1. **Build**: Run `.\scripts\build.ps1` to generate the deployment package
+2. **Upload**: Upload the contents of `build/` to your server
+3. **Configure**: Set data directory, port, etc. via environment variables
+4. **Run**: Execute `mynote-server` (Linux) or `mynote-server.exe` (Windows)
 
-### Linux 部署示例
+### Linux Deployment Example
 
 ```bash
-# 交叉编译 Linux 版本
+# Cross-compile for Linux
 cd backend
 $env:GOOS="linux"; $env:GOARCH="amd64"; go build -o mynote-server .
 
-# 服务器上运行
+# Run on server
 export MYNOTE_DATA_DIR=/data/notes
 export MYNOTE_DIST_DIR=/app/dist
 export MYNOTE_PORT=80
 ./mynote-server
 ```
 
-## 项目结构
+## Project Structure
 
 ```
 mynote/
-├── backend/                # Go 后端
-│   ├── main.go            # 入口，路由，静态文件服务
-│   ├── api/handler.go     # REST API 处理器
-│   ├── service/note_service.go # 笔记服务（文件存储逻辑）
-│   ├── models/note.go     # 数据模型
-│   └── data/              # 笔记文件存储目录
-├── frontend/               # Vue 前端
+├── backend/                # Go backend
+│   ├── main.go            # Entry point, routing, static file serving
+│   ├── api/handler.go     # REST API handlers
+│   ├── service/note_service.go # Note service (file storage logic)
+│   ├── models/note.go     # Data models
+│   └── data/              # Note file storage directory
+├── frontend/               # Vue frontend
 │   └── src/
-│       ├── App.vue        # 根组件
+│       ├── App.vue        # Root component
 │       ├── components/
-│       │   ├── Sidebar.vue     # 侧边栏（目录树+右键菜单）
-│       │   └── NoteEditor.vue  # Markdown 编辑器
-│       └── api/index.js  # API 请求封装
+│       │   ├── Sidebar.vue     # Sidebar (directory tree + context menu)
+│       │   └── NoteEditor.vue  # Markdown editor
+│       └── api/index.js  # API request wrapper
 ├── scripts/
-│   ├── dev.ps1            # 开发模式启动
-│   └── build.ps1          # 生产构建打包
-├── start-dev.bat          # 一键开发启动
-└── AGENT.md               # AI Agent 项目说明
+│   ├── dev.ps1            # Development mode startup
+│   └── build.ps1          # Production build packaging
+├── start-dev.bat          # One-click development startup
+└── AGENT.md               # AI Agent project documentation
 ```
 
 ## License
