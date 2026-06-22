@@ -11,8 +11,32 @@ const contextMenu = ref(null)
 const contextMenuTarget = ref(null)
 const dialogVisible = ref(false)
 const dialogType = ref('file') // 'file' or 'directory'
-const dialogParentPath = ref('')
+const dialogParentPath = ref('default')
 const newName = ref('')
+
+// 从目录树中提取所有目录路径（含 default），用于创建笔记时选择
+const directoryOptions = ref([])
+
+function collectDirectories(nodes, prefix = '', result = []) {
+  for (const node of nodes) {
+    if (node.type === 'directory') {
+      result.push({ label: node.path, value: node.path })
+      if (node.children && node.children.length) {
+        collectDirectories(node.children, node.path, result)
+      }
+    }
+  }
+  return result
+}
+
+function refreshDirectoryOptions() {
+  const dirs = collectDirectories(treeData.value)
+  // 确保 default 始终在选项中
+  if (!dirs.find((d) => d.value === 'default')) {
+    dirs.unshift({ label: 'default', value: 'default' })
+  }
+  directoryOptions.value = dirs
+}
 
 // 加载目录树
 async function loadTree() {
@@ -21,6 +45,7 @@ async function loadTree() {
     const res = await getTree()
     if (res.data.code === 200) {
       treeData.value = res.data.data || []
+      refreshDirectoryOptions()
     }
   } catch (err) {
     console.error('加载目录树失败:', err)
@@ -60,7 +85,7 @@ onUnmounted(() => {
 // 新建笔记/目录
 function showNewFileDialog(parentPath = '') {
   dialogType.value = 'file'
-  dialogParentPath.value = parentPath
+  dialogParentPath.value = parentPath || 'default'
   newName.value = ''
   dialogVisible.value = true
   contextMenu.value = null
@@ -68,7 +93,7 @@ function showNewFileDialog(parentPath = '') {
 
 function showNewDirectoryDialog(parentPath = '') {
   dialogType.value = 'directory'
-  dialogParentPath.value = parentPath
+  dialogParentPath.value = parentPath || 'default'
   newName.value = ''
   dialogVisible.value = true
   contextMenu.value = null
@@ -80,9 +105,12 @@ async function confirmCreate() {
     return
   }
 
+  // 确保有目标目录，默认为 default
+  const targetDir = dialogParentPath.value || 'default'
+
   try {
     const data = {
-      path: dialogParentPath.value,
+      path: targetDir,
       name: newName.value.trim(),
       is_dir: dialogType.value === 'directory',
       content: dialogType.value === 'file' ? `# ${newName.value.trim()}\n\n` : '',
@@ -95,9 +123,7 @@ async function confirmCreate() {
 
     // 如果是文件，自动打开编辑
     if (dialogType.value === 'file') {
-      const notePath = dialogParentPath.value
-        ? `${dialogParentPath.value}/${newName.value.trim()}.md`
-        : `${newName.value.trim()}.md`
+      const notePath = `${targetDir}/${newName.value.trim()}.md`
       emit('noteCreated', { path: notePath, name: newName.value.trim() })
     }
   } catch (err) {
@@ -200,6 +226,16 @@ onMounted(() => {
       :close-on-click-modal="false"
     >
       <el-form @submit.prevent="confirmCreate">
+        <el-form-item label="所属目录">
+          <el-select v-model="dialogParentPath" placeholder="选择目录" style="width: 100%">
+            <el-option
+              v-for="dir in directoryOptions"
+              :key="dir.value"
+              :label="dir.label"
+              :value="dir.value"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item :label="dialogType === 'file' ? '笔记名称' : '目录名称'">
           <el-input
             v-model="newName"

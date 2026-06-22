@@ -14,10 +14,15 @@ type NoteService struct {
 	DataDir string
 }
 
+// DefaultDir 默认目录名
+const DefaultDir = "default"
+
 // NewNoteService 创建笔记服务
 func NewNoteService(dataDir string) *NoteService {
 	// 确保数据目录存在
 	os.MkdirAll(dataDir, 0755)
+	// 确保默认目录存在
+	os.MkdirAll(filepath.Join(dataDir, DefaultDir), 0755)
 	return &NoteService{DataDir: dataDir}
 }
 
@@ -106,22 +111,29 @@ func (s *NoteService) GetNote(path string) (*models.Note, error) {
 }
 
 // CreateNote 创建笔记或目录
+// 当 req.Path 为空时，笔记/目录将创建在默认目录 default 下
 func (s *NoteService) CreateNote(req models.CreateNoteRequest) error {
+	// 路径为空时使用默认目录
+	dirPath := req.Path
+	if dirPath == "" {
+		dirPath = DefaultDir
+	}
+
 	if req.IsDir {
-		absPath := filepath.Join(s.DataDir, req.Path, req.Name)
+		absPath := filepath.Join(s.DataDir, dirPath, req.Name)
 		return os.MkdirAll(absPath, 0755)
 	}
 
 	// 创建笔记
-	dirPath := filepath.Join(s.DataDir, req.Path)
-	os.MkdirAll(dirPath, 0755)
+	absDirPath := filepath.Join(s.DataDir, dirPath)
+	os.MkdirAll(absDirPath, 0755)
 
 	fileName := req.Name
 	if !strings.HasSuffix(fileName, ".md") {
 		fileName += ".md"
 	}
 
-	absPath := filepath.Join(dirPath, fileName)
+	absPath := filepath.Join(absDirPath, fileName)
 	return os.WriteFile(absPath, []byte(req.Content), 0644)
 }
 

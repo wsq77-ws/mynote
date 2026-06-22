@@ -27,8 +27,9 @@ type Note struct {
 }
 
 // CreateNoteRequest 创建笔记请求
+// Path 为空时后端默认使用 "default" 目录
 type CreateNoteRequest struct {
-	Path    string `json:"path" binding:"required"`
+	Path    string `json:"path"`
 	Name    string `json:"name" binding:"required"`
 	IsDir   bool   `json:"is_dir"`
 	Content string `json:"content"`
