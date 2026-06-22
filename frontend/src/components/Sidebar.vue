@@ -14,6 +14,7 @@ const dialogType = ref('file') // 'file' or 'directory'
 const dialogParentPath = ref('default')
 const newName = ref('')
 const newAuthor = ref('')
+const creating = ref(false) // 创建中加载状态
 
 // 搜索相关
 const searchKeyword = ref('')
@@ -142,20 +143,29 @@ async function confirmCreate() {
     ElMessage.warning('请输入名称')
     return
   }
+  if (creating.value) return
 
   // 确保有目标目录，默认为 default
   const targetDir = dialogParentPath.value || 'default'
   const author = newAuthor.value.trim() || 'default'
+  const nameTrimmed = newName.value.trim()
+
+  creating.value = true
+  // 设置 3 秒超时，避免长时间等待无响应
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('创建超时，请稍后重试')), 3000)
+  )
 
   try {
     const data = {
       path: targetDir,
-      name: newName.value.trim(),
+      name: nameTrimmed,
       author: author,
       is_dir: dialogType.value === 'directory',
-      content: dialogType.value === 'file' ? `# ${newName.value.trim()}\n\n` : '',
+      content: dialogType.value === 'file' ? `# ${nameTrimmed}\n\n` : '',
     }
-    await createNote(data)
+    // 等待后端返回，最多 3 秒
+    await Promise.race([createNote(data), timeout])
     ElMessage.success('创建成功')
     dialogVisible.value = false
     newName.value = ''
@@ -164,11 +174,13 @@ async function confirmCreate() {
 
     // 如果是文件，自动打开编辑
     if (dialogType.value === 'file') {
-      const notePath = `${targetDir}/${newName.value.trim()}.md`
-      emit('noteCreated', { path: notePath, name: newName.value.trim() })
+      const notePath = `${targetDir}/${nameTrimmed}.md`
+      emit('noteCreated', { path: notePath, name: nameTrimmed })
     }
   } catch (err) {
     ElMessage.error('创建失败: ' + (err.response?.data?.message || err.message))
+  } finally {
+    creating.value = false
   }
 }
 
@@ -323,8 +335,8 @@ onMounted(() => {
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmCreate">确定</el-button>
+        <el-button @click="dialogVisible = false" :disabled="creating">取消</el-button>
+        <el-button type="primary" @click="confirmCreate" :loading="creating">确定</el-button>
       </template>
     </el-dialog>
   </div>
