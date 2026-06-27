@@ -12,6 +12,9 @@ import (
 // DefaultDir 默认目录名
 const DefaultDir = "default"
 
+// DefaultAuthor 默认作者名
+const DefaultAuthor = "default"
+
 // NoteService 笔记服务
 type NoteService struct {
 	storage storage.Storage
@@ -26,7 +29,13 @@ func NewNoteService(s storage.Storage, m meta.Meta) *NoteService {
 }
 
 // GetTree 获取目录树
+// 先从 SQLite 读取元数据，再从存储层加载目录结构
 func (s *NoteService) GetTree(dirPath string) ([]*models.TreeNode, error) {
+	if dirPath == "" {
+		dirPath = "."
+	}
+
+	// 从存储层获取实际目录结构
 	entries, err := s.storage.List(dirPath)
 	if err != nil {
 		return nil, err
@@ -42,7 +51,6 @@ func (s *NoteService) GetTree(dirPath string) ([]*models.TreeNode, error) {
 	var nodes []*models.TreeNode
 	for _, entry := range entries {
 		name := entry.Name
-		// 跳过隐藏文件和目录
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
@@ -67,7 +75,6 @@ func (s *NoteService) GetTree(dirPath string) ([]*models.TreeNode, error) {
 
 		if entry.IsDir {
 			node.Type = models.TypeDirectory
-			// 递归获取子节点
 			children, err := s.GetTree(entry.Path)
 			if err == nil && len(children) > 0 {
 				node.Children = children
@@ -78,7 +85,7 @@ func (s *NoteService) GetTree(dirPath string) ([]*models.TreeNode, error) {
 			node.Type = models.TypeFile
 			node.Name = strings.TrimSuffix(name, ".md")
 		} else {
-			continue // 跳过非md文件
+			continue
 		}
 
 		nodes = append(nodes, node)
@@ -101,12 +108,13 @@ func (s *NoteService) GetTree(dirPath string) ([]*models.TreeNode, error) {
 }
 
 // GetNote 获取笔记内容
+// 先从 SQLite 读取元数据，再从存储层加载文件内容
 func (s *NoteService) GetNote(path string) (*models.Note, error) {
-	// 确保是 .md 文件
 	if !strings.HasSuffix(path, ".md") {
 		path += ".md"
 	}
 
+	// 从存储层读取内容
 	content, modTime, err := s.storage.Read(path)
 	if err != nil {
 		return nil, err
@@ -127,9 +135,8 @@ func (s *NoteService) GetNote(path string) (*models.Note, error) {
 }
 
 // CreateNote 创建笔记或目录
-// 当 req.Path 为空时，笔记/目录将创建在默认目录 default 下
+// 同时写入存储层和 SQLite 元数据
 func (s *NoteService) CreateNote(req models.CreateNoteRequest) error {
-	// 路径为空时使用默认目录
 	dirPath := req.Path
 	if dirPath == "" {
 		dirPath = DefaultDir
@@ -168,6 +175,7 @@ func (s *NoteService) CreateNote(req models.CreateNoteRequest) error {
 }
 
 // UpdateNote 更新笔记内容
+// 同时更新存储层和 SQLite 元数据
 func (s *NoteService) UpdateNote(path string, req models.UpdateNoteRequest) error {
 	if !strings.HasSuffix(path, ".md") {
 		path += ".md"
@@ -180,6 +188,7 @@ func (s *NoteService) UpdateNote(path string, req models.UpdateNoteRequest) erro
 }
 
 // DeleteNode 删除笔记或目录
+// 同时删除存储层文件和 SQLite 元数据
 func (s *NoteService) DeleteNode(path string) error {
 	// 删除元数据
 	s.meta.DeleteNoteMeta(path)
