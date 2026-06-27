@@ -50,25 +50,12 @@ function refreshDirectoryOptions() {
 
 // 加载目录树
 async function loadTree() {
-  // 保存当前展开状态
-  if (treeRef.value) {
-    expandedPaths.value = treeRef.value.getExpandedKeys()
-  }
-
   loading.value = true
   try {
     const res = await getTree()
     if (res.data.code === 200) {
       treeData.value = res.data.data || []
       refreshDirectoryOptions()
-
-      // 恢复展开状态
-      await nextTick()
-      if (treeRef.value && expandedPaths.value.length > 0) {
-        expandedPaths.value.forEach(path => {
-          treeRef.value.setExpanded(path, true)
-        })
-      }
     }
   } catch (err) {
     console.error('加载目录树失败:', err)
@@ -81,6 +68,20 @@ async function loadTree() {
 function selectNode(node) {
   if (node.type === 'file') {
     emit('selectNote', { path: node.path, name: node.name })
+  }
+}
+
+// 节点展开/收起时记录状态
+function handleNodeExpand(data) {
+  if (!expandedPaths.value.includes(data.path)) {
+    expandedPaths.value.push(data.path)
+  }
+}
+
+function handleNodeCollapse(data) {
+  const index = expandedPaths.value.indexOf(data.path)
+  if (index > -1) {
+    expandedPaths.value.splice(index, 1)
   }
 }
 
@@ -310,10 +311,13 @@ onMounted(() => {
         node-key="path"
         :highlight-current="true"
         :expand-on-click-node="false"
+        :default-expanded-keys="expandedPaths"
         draggable
         @node-click="selectNode"
         @node-contextmenu="handleContextMenu"
         @node-drop="handleNodeDrop"
+        @node-expand="handleNodeExpand"
+        @node-collapse="handleNodeCollapse"
       >
         <template #default="{ node, data }">
           <span class="tree-item">
