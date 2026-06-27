@@ -22,6 +22,7 @@ const renameDialogVisible = ref(false)
 const renameTarget = ref(null)
 const renameNewName = ref('')
 const treeRef = ref(null)
+const expandedPaths = ref([]) // 保持目录展开状态
 
 // 从目录树中提取所有目录路径（含 default），用于创建笔记时选择
 const directoryOptions = ref([])
@@ -49,12 +50,25 @@ function refreshDirectoryOptions() {
 
 // 加载目录树
 async function loadTree() {
+  // 保存当前展开状态
+  if (treeRef.value) {
+    expandedPaths.value = treeRef.value.getExpandedKeys()
+  }
+
   loading.value = true
   try {
     const res = await getTree()
     if (res.data.code === 200) {
       treeData.value = res.data.data || []
       refreshDirectoryOptions()
+
+      // 恢复展开状态
+      await nextTick()
+      if (treeRef.value && expandedPaths.value.length > 0) {
+        expandedPaths.value.forEach(path => {
+          treeRef.value.setExpanded(path, true)
+        })
+      }
     }
   } catch (err) {
     console.error('加载目录树失败:', err)
@@ -127,12 +141,13 @@ async function confirmCreate() {
     await createNote(data)
     ElMessage.success('创建成功')
     dialogVisible.value = false
-    newName.value = ''
     await loadTree()
 
-    // 如果是文件，自动打开编辑
+    // 如果是文件，延迟后自动打开编辑（避免404）
     if (dialogType.value === 'file') {
       const notePath = `${targetDir}/${newName.value.trim()}.md`
+      // 延迟500ms确保后端完成文件创建
+      await new Promise(resolve => setTimeout(resolve, 1000))
       emit('noteCreated', { path: notePath, name: newName.value.trim() })
     }
   } catch (err) {
