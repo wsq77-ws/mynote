@@ -46,3 +46,38 @@ type APIResponse struct {
 	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
 }
+
+// TagRequest 标签操作请求
+type TagRequest struct {
+	Path string `json:"path" binding:"required"`
+	Tag  string `json:"tag" binding:"required"`
+}
+
+// UpdateTagsRequest 批量更新标签请求
+type UpdateTagsRequest struct {
+	Path string   `json:"path" binding:"required"`
+	Tags []string `json:"tags"`
+}
+
+// RenameRequest 重命名请求
+type RenameRequest struct {
+	Path    string `json:"path" binding:"required"`
+	NewName string `json:"newName" binding:"required"`
+}
+
+// SortOrderRequest 排序请求
+type SortOrderRequest struct {
+	Path      string `json:"path" binding:"required"`
+	SortOrder int    `json:"sortOrder"`
+}
+
+// SearchRequest 搜索请求
+type SearchRequest struct {
+	Query string `json:"query" binding:"required"`
+}
+
+// TagInfo 标签信息
+type TagInfo struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}

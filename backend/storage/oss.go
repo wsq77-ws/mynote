@@ -316,6 +316,123 @@ func (s *OSSStorage) Exists(path string) (bool, error) {
 	return result.KeyCount != nil && *result.KeyCount > 0, nil
 }
 
+// Rename 重命名文件或目录（复制+删除）
+func (s *OSSStorage) Rename(oldPath, newPath string) error {
+	oldKey := s.fullKey(oldPath)
+	newKey := s.fullKey(newPath)
+
+	// 检查是否是目录
+	isDir := false
+	dirOldKey := oldKey
+	if !strings.HasSuffix(dirOldKey, "/") {
+		dirOldKey += "/"
+	}
+
+	listInput := &s3.ListObjectsV2Input{
+		Bucket:  aws.String(s.bucket),
+		Prefix:  aws.String(dirOldKey),
+		MaxKeys: aws.Int32(1),
+	}
+	result, err := s.client.ListObjectsV2(context.TODO(), listInput)
+	if err == nil && result.KeyCount != nil && *result.KeyCount > 0 {
+		isDir = true
+	}
+
+	if isDir {
+		// 目录：需要复制所有子对象
+		return s.renameDirectory(oldKey, newKey)
+	}
+
+	// 文件：直接复制
+	_, err = s.client.CopyObject(context.TODO(), &s3.CopyObjectInput{
+		Bucket:     aws.String(s.bucket),
+		Key:        aws.String(newKey),
+		CopySource: aws.String(s.bucket + "/" + oldKey),
+	})
+	if err != nil {
+		return fmt.Errorf("复制对象失败: %w", err)
+	}
+
+	// 删除原对象
+	_, err = s.client.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(oldKey),
+	})
+	return err
+}
+
+// renameDirectory 重命名目录
+func (s *OSSStorage) renameDirectory(oldKey, newKey string) error {
+	// 确保以 / 结尾
+	if !strings.HasSuffix(oldKey, "/") {
+		oldKey += "/"
+	}
+	if !strings.HasSuffix(newKey, "/") {
+		newKey += "/"
+	}
+
+	// 列出所有子对象
+	var objectKeys []string
+	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(s.bucket),
+		Prefix: aws.String(oldKey),
+	})
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(context.TODO())
+		if err != nil {
+			return fmt.Errorf("列出对象失败: %w", err)
+		}
+		for _, obj := range page.Contents {
+			objectKeys = append(objectKeys, *obj.Key)
+		}
+	}
+
+	// 复制所有对象
+	for _, oldObjKey := range objectKeys {
+		// 计算新的 key
+		relativePath := strings.TrimPrefix(oldObjKey, oldKey)
+		newObjKey := newKey + relativePath
+
+		_, err := s.client.CopyObject(context.TODO(), &s3.CopyObjectInput{
+			Bucket:     aws.String(s.bucket),
+			Key:        aws.String(newObjKey),
+			CopySource: aws.String(s.bucket + "/" + oldObjKey),
+		})
+		if err != nil {
+			return fmt.Errorf("复制对象失败: %w", err)
+		}
+	}
+
+	// 删除所有旧对象
+	var objectIds []types.ObjectIdentifier
+	for _, key := range objectKeys {
+		objectIds = append(objectIds, types.ObjectIdentifier{Key: aws.String(key)})
+	}
+
+	// 分批删除
+	for i := 0; i < len(objectIds); i += 1000 {
+		end := i + 1000
+		if end > len(objectIds) {
+			end = len(objectIds)
+		}
+		batch := objectIds[i:end]
+
+		_, err := s.client.DeleteObjects(context.TODO(), &s3.DeleteObjectsInput{
+			Bucket: aws.String(s.bucket),
+			Delete: &types.Delete{
+				Objects: batch,
+				Quiet:   aws.Bool(true),
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("删除对象失败: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // Type 返回存储类型标识
 func (s *OSSStorage) Type() string {
 	return "oss"

@@ -34,6 +34,9 @@ type Storage interface {
 	// Exists 检查路径是否存在
 	Exists(path string) (bool, error)
 
+	// Rename 重命名文件或目录
+	Rename(oldPath, newPath string) error
+
 	// Type 返回存储类型标识
 	Type() string
 }

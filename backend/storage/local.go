@@ -127,6 +127,17 @@ func (s *LocalStorage) Exists(path string) (bool, error) {
 	return false, err
 }
 
+// Rename 重命名文件或目录
+func (s *LocalStorage) Rename(oldPath, newPath string) error {
+	absOldPath := s.absPath(oldPath)
+	absNewPath := s.absPath(newPath)
+	// 确保目标父目录存在
+	if err := os.MkdirAll(filepath.Dir(absNewPath), 0755); err != nil {
+		return fmt.Errorf("创建目标目录失败: %w", err)
+	}
+	return os.Rename(absOldPath, absNewPath)
+}
+
 // Type 返回存储类型标识
 func (s *LocalStorage) Type() string {
 	return "local"

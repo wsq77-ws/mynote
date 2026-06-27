@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"mynote-backend/api"
+	"mynote-backend/meta"
 	"mynote-backend/service"
 	"mynote-backend/storage"
 
@@ -52,8 +53,19 @@ func main() {
 	}
 	log.Printf("存储后端: %s", store.Type())
 
+	// 创建元数据管理
+	dbPath := filepath.Join(cfg.Storage.Local.DataDir, "mynote.db")
+	if envDb := os.Getenv("MYNOTE_DB_PATH"); envDb != "" {
+		dbPath = envDb
+	}
+	metaStore, err := meta.NewSQLiteMeta(dbPath)
+	if err != nil {
+		log.Fatalf("创建元数据管理失败: %v", err)
+	}
+	log.Printf("数据库路径: %s", dbPath)
+
 	// 创建服务
-	noteSvc := service.NewNoteService(store)
+	noteSvc := service.NewNoteService(store, metaStore)
 	handler := api.NewHandler(noteSvc)
 
 	// 创建路由

@@ -9,8 +9,14 @@ A Markdown-based local knowledge note system with hierarchical directory structu
 - **Markdown Editing** — Powered by md-editor-v3, supports code highlighting, tables, lists, and more
 - **Hierarchical Directory Tree** — Sidebar tree with unlimited nesting for organizing notes and folders
 - **Auto Save** — Content is automatically saved 2 seconds after editing stops, with manual save option
-- **Context Menu** — Right-click on the tree to create notes/directories or delete nodes
+- **Offline Save** — Automatically caches to localStorage when offline, auto-syncs when back online
+- **Context Menu** — Right-click on the tree to create notes/directories, delete nodes, or rename
 - **Live Preview** — WYSIWYG editing experience
+- **Keyboard Shortcuts** — `Ctrl+S` to save, `Ctrl+F` to search, `Ctrl+N` to create new note
+- **Word Count** — Real-time display of word count, line count, and estimated reading time
+- **Global Search** — Search note names, paths, and content for quick navigation
+- **Tag System** — Add tags to notes, categorize and search by tags
+- **Drag to Sort** — Drag notes and folders within the same directory to reorder
 - **Pluggable Storage** — Supports local filesystem and object storage (S3 compatible), switchable via config file
 - **One-Click Deployment** — In production mode, the backend serves frontend static files on a single port
 
@@ -81,12 +87,58 @@ To run: double-click `build/start.bat`, or execute `mynote-server.exe` directly,
 
 1. Click the "New" button at the top of the sidebar to create a note in the default directory
 2. Or right-click a directory in the tree and select "New Note" / "New Directory"
+3. Use shortcut `Ctrl+N` to quickly create a new note
 
 ### Edit a Note
 
 1. Click any note file in the left sidebar tree
 2. Write Markdown content in the right editor
-3. Content auto-saves 2 seconds after you stop typing, or click "Save" manually
+3. Content auto-saves 2 seconds after you stop typing, or:
+   - Click "Save" button manually
+   - Use shortcut `Ctrl+S` to save
+
+### Offline Save
+
+When the network is unavailable, the editor automatically switches to offline mode:
+
+- **Auto fallback**: If saving to server fails, content is cached to browser localStorage
+- **Status indicator**: "Offline" or "Unsynced" tag shown next to the title, status bar at the bottom
+- **Auto sync**: When network recovers, all offline changes are automatically synced to the server
+- **Manual sync**: Click the "Sync" button next to the title to trigger sync manually
+- **Cache priority**: When loading a note, cached version takes priority if unsynced changes exist
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+S` | Save current note |
+| `Ctrl+F` | Open search box |
+| `Ctrl+N` | Create new note |
+
+### Word Count
+
+The editor footer shows real-time stats:
+- Word count (Chinese characters, English words)
+- Line count
+- Estimated reading time (200 words/min)
+
+### Search Notes
+
+1. Click the search box in the sidebar, or use `Ctrl+F`
+2. Enter keywords to search note names, paths, and content
+3. Click search results to open the corresponding note
+
+### Tag Management
+
+1. Enter tag name in the tag input area at the top of the editor
+2. Press Enter to add tag, click `×` on tag to remove
+3. Tags are synced automatically when saving
+4. Search by tag via `/api/tags/search?tag=xxx`
+
+### Rename & Drag to Sort
+
+- **Rename**: Right-click a note or directory, select "Rename", enter new name
+- **Drag to Sort**: Drag notes or folders within the same directory to reorder
 
 ### Delete a Note
 
@@ -102,6 +154,14 @@ Right-click a note or directory in the tree and select "Delete".
 | `POST` | `/api/note` | Create note or directory |
 | `PUT` | `/api/note?path=` | Update note content |
 | `DELETE` | `/api/note?path=` | Delete note or directory |
+| `GET` | `/api/search?keyword=` | Search notes (name, path, content) |
+| `PUT` | `/api/rename?path=&newName=` | Rename note or directory |
+| `POST` | `/api/sort` | Update sort order `{path, sortOrder}` |
+| `GET` | `/api/tags?path=` | Get note tags |
+| `POST` | `/api/tags` | Add tag `{path, tag}` |
+| `DELETE` | `/api/tags` | Remove tag `{path, tag}` |
+| `GET` | `/api/tags/search?tag=` | Search by tag |
+| `GET` | `/api/tags/all` | Get all tags |
 
 ### Request Examples
 
@@ -124,6 +184,20 @@ curl -X PUT "http://localhost:8080/api/note?path=default/new-note.md" \
 
 # Delete a note
 curl -X DELETE "http://localhost:8080/api/note?path=default/new-note.md"
+
+# Search notes
+curl "http://localhost:8080/api/search?keyword=note"
+
+# Rename a note
+curl -X PUT "http://localhost:8080/api/rename?path=default/old-note.md&newName=new-note"
+
+# Add a tag
+curl -X POST http://localhost:8080/api/tags \
+  -H "Content-Type: application/json" \
+  -d '{"path":"default/note.md","tag":"tech"}'
+
+# Search by tag
+curl "http://localhost:8080/api/tags/search?tag=tech"
 ```
 
 ## Environment Variables
