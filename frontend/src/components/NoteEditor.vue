@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
+import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getNote, updateNote, updateNoteTags, getNoteTags } from '../api/index.js'
 import { saveToLocal, loadFromLocal, removeFromLocal, getDirtyList, hasUnsyncedData, isOnline } from '../utils/offlineStorage.js'
@@ -21,6 +21,8 @@ const saving = ref(false)
 const fileInfo = ref(null)
 const tags = ref([])
 const newTag = ref('')
+const showTagInput = ref(false)
+const tagInputRef = ref(null)
 const previewOnly = ref(false)
 const isOffline = ref(!navigator.onLine)
 const hasLocalCache = ref(false)
@@ -195,13 +197,27 @@ async function saveTags() {
 }
 
 // 添加标签
-function addTag() {
+async function addTag() {
   const tag = newTag.value.trim()
   if (tag && !tags.value.includes(tag)) {
     tags.value.push(tag)
-    saveTags()
+    await saveTags()
   }
   newTag.value = ''
+  showTagInput.value = false
+}
+
+// 标签颜色轮换
+const tagTypes = ['primary', 'success', 'warning', 'danger', 'info']
+function getTagType(tag, index) {
+  return tagTypes[index % tagTypes.length]
+}
+
+// 显示标签输入框并自动聚焦
+async function showTagInputWithFocus() {
+  showTagInput.value = true
+  await nextTick()
+  tagInputRef.value?.focus()
 }
 
 // 删除标签
@@ -253,23 +269,45 @@ defineExpose({ manualSave, togglePreview, triggerSync })
     </div>
 
     <!-- 标签区域 -->
-    <div class="tags-area" style="padding: 8px 12px; border-bottom: 1px solid #e4e7ed; display: flex; align-items: center; gap: 8px;">
-      <el-tag
-        v-for="(tag, index) in tags"
-        :key="index"
-        closable
-        @close="removeTag(index)"
-        style="margin-right: 4px;"
-      >
-        {{ tag }}
-      </el-tag>
-      <el-input
-        v-model="newTag"
-        placeholder="输入标签后回车添加"
-        size="small"
-        style="width: 150px;"
-        @keyup.enter="addTag"
-      />
+    <div class="tags-area" style="padding: 8px 12px; border-bottom: 1px solid #e4e7ed;">
+      <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <span style="font-size: 13px; color: #606266;">
+          <el-icon style="vertical-align: middle;"><PriceTag /></el-icon>
+          标签:
+        </span>
+        <el-tag
+          v-for="(tag, index) in tags"
+          :key="index"
+          closable
+          :type="getTagType(tag, index)"
+          effect="light"
+          @close="removeTag(index)"
+          style="margin-right: 4px;"
+        >
+          {{ tag }}
+        </el-tag>
+        <el-input
+          v-if="showTagInput"
+          v-model="newTag"
+          ref="tagInputRef"
+          placeholder="输入标签后回车添加"
+          size="small"
+          style="width: 150px;"
+          @keyup.enter="addTag"
+          @blur="showTagInput = false"
+        />
+        <el-button
+          v-else
+          size="small"
+          circle
+          @click="showTagInputWithFocus"
+        >
+          <el-icon><Plus /></el-icon>
+        </el-button>
+        <span v-if="tags.length === 0 && !showTagInput" style="font-size: 12px; color: #c0c4cc;">
+          暂无标签
+        </span>
+      </div>
     </div>
 
     <div class="editor-area" style="flex: 1; position: relative; overflow: hidden;">
