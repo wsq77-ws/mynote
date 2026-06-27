@@ -3,6 +3,7 @@ package meta
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -416,25 +417,69 @@ func (m *SQLiteMeta) DeleteNoteContent(path string) error {
 	return err
 }
 
-// SearchNotes 搜索笔记（名称和内容）
+// SearchNotes 搜索笔记（标签、名称、内容）
+// 注意：SQLite 连接池设置为 MaxOpenConns=1，因此在 rows 关闭前
+// 不能调用其它查询（如 GetTags），否则会造成死锁。
+// 本实现先收集所有命中结果并关闭 rows，再统一获取标签。
 func (m *SQLiteMeta) SearchNotes(query string) ([]SearchResult, error) {
 	var results []SearchResult
+	seen := make(map[string]bool)
+	like := "%" + query + "%"
 
-	// 搜索名称
-	rows, err := m.db.Query(`
+	// 1. 搜索标签（优先级最高，明确按标签匹配）
+	tagRows, err := m.db.Query(`
+		SELECT DISTINCT n.path, n.name, n.is_dir, n.sort_order
+		FROM notes n
+		INNER JOIN tags t ON n.path = t.note_path
+		WHERE t.tag_name LIKE ?
+		ORDER BY n.sort_order, n.name
+	`, like)
+	if err != nil {
+		log.Printf("[SearchNotes] 标签查询失败: %v", err)
+	} else {
+		for tagRows.Next() {
+			var path, name string
+			var isDir, sortOrder int
+			if err = tagRows.Scan(&path, &name, &isDir, &sortOrder); err != nil {
+				log.Printf("[SearchNotes] 标签行扫描失败: %v", err)
+				continue
+			}
+			if seen[path] {
+				// 已命中，提升匹配类型为 tag
+				for i, r := range results {
+					if r.Path == path && r.MatchType != "tag" {
+						results[i].MatchType = "tag"
+						break
+					}
+				}
+				continue
+			}
+			seen[path] = true
+			results = append(results, SearchResult{
+				Path:      path,
+				Name:      name,
+				IsDir:     isDir == 1,
+				MatchType: "tag",
+			})
+		}
+		tagRows.Close()
+	}
+
+	// 2. 搜索名称
+	nameRows, err := m.db.Query(`
 		SELECT path, name, is_dir FROM notes
 		WHERE name LIKE ? OR path LIKE ?
 		ORDER BY name
-	`, "%"+query+"%", "%"+query+"%")
+	`, like, like)
 	if err != nil {
-		return nil, err
+		log.Printf("[SearchNotes] 名称查询失败: %v", err)
+		return results, nil
 	}
-
-	seen := make(map[string]bool)
-	for rows.Next() {
+	for nameRows.Next() {
 		var path, name string
 		var isDir int
-		if err := rows.Scan(&path, &name, &isDir); err != nil {
+		if err = nameRows.Scan(&path, &name, &isDir); err != nil {
+			log.Printf("[SearchNotes] 名称行扫描失败: %v", err)
 			continue
 		}
 		if seen[path] {
@@ -448,34 +493,29 @@ func (m *SQLiteMeta) SearchNotes(query string) ([]SearchResult, error) {
 			MatchType: "name",
 		})
 	}
-	rows.Close()
+	nameRows.Close()
 
-	// 搜索内容
-	rows, err = m.db.Query(`
+	// 3. 搜索内容
+	contentRows, err := m.db.Query(`
 		SELECT path, content FROM notes_content
 		WHERE content LIKE ?
-	`, "%"+query+"%")
+	`, like)
 	if err != nil {
-		// 如果 FTS 表不存在，忽略错误
+		log.Printf("[SearchNotes] 内容查询失败: %v", err)
 		return results, nil
 	}
-	defer rows.Close()
-
-	for rows.Next() {
+	for contentRows.Next() {
 		var path, content string
-		if err := rows.Scan(&path, &content); err != nil {
+		if err = contentRows.Scan(&path, &content); err != nil {
+			log.Printf("[SearchNotes] 内容行扫描失败: %v", err)
 			continue
 		}
 		if seen[path] {
-			// 已经通过名称匹配，跳过
 			continue
 		}
 		seen[path] = true
 
-		// 提取片段
 		snippet := extractSnippet(content, query, 100)
-
-		// 获取笔记名称
 		name := path
 		if idx := strings.LastIndex(path, "/"); idx >= 0 {
 			name = path[idx+1:]
@@ -489,6 +529,25 @@ func (m *SQLiteMeta) SearchNotes(query string) ([]SearchResult, error) {
 			Snippet:   snippet,
 			MatchType: "content",
 		})
+	}
+	contentRows.Close()
+
+	// 4. 统一获取每条结果的标签（此时所有 rows 已关闭，可安全查询）
+	// 使用缓存避免对同一路径重复查询
+	tagCache := make(map[string][]string)
+	for i := range results {
+		p := results[i].Path
+		if cached, ok := tagCache[p]; ok {
+			results[i].Tags = cached
+			continue
+		}
+		tags, err := m.GetTags(p)
+		if err != nil {
+			log.Printf("[SearchNotes] 获取标签失败 path=%s: %v", p, err)
+			tags = nil // 获取失败不阻断整体搜索
+		}
+		tagCache[p] = tags
+		results[i].Tags = tags
 	}
 
 	return results, nil

@@ -14,8 +14,8 @@ A Markdown-based local knowledge note system with hierarchical directory structu
 - **Live Preview** — WYSIWYG editing experience
 - **Keyboard Shortcuts** — `Ctrl+S` to save, `Ctrl+F` to search, `Ctrl+N` to create new note
 - **Word Count** — Real-time display of word count, line count, and estimated reading time
-- **Global Search** — Search note names, paths, and content for quick navigation
-- **Tag System** — Add tags to notes, categorize and search by tags
+- **Global Search** — Search note names, paths, content, **and tags**; results display match type and highlighted tags
+- **Tag System** — Add tags to notes, categorize and search by tags; newly added tags are immediately searchable
 - **Drag to Sort** — Drag notes and folders within the same directory to reorder
 - **Pluggable Storage** — Supports local filesystem and object storage (S3 compatible), switchable via config file
 - **One-Click Deployment** — In production mode, the backend serves frontend static files on a single port

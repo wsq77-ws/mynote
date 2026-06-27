@@ -209,6 +209,12 @@ function selectSearchResult(result) {
   searchDialogVisible.value = false
 }
 
+// 判断标签是否匹配搜索关键词（高亮匹配的标签）
+function isTagMatched(tag, keyword) {
+  if (!keyword) return false
+  return tag.toLowerCase().includes(keyword.toLowerCase())
+}
+
 // 聚焦搜索框
 function focusSearch() {
   nextTick(() => {
@@ -419,7 +425,7 @@ onMounted(() => {
     <el-dialog
       v-model="searchDialogVisible"
       title="搜索结果"
-      width="500px"
+      width="600px"
       center
       @closed="searchResults = []"
     >
@@ -431,12 +437,42 @@ onMounted(() => {
             class="search-result-item"
             @click="selectSearchResult(result)"
           >
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <el-icon v-if="result.isDir"><FolderOpened /></el-icon>
-              <el-icon v-else><Document /></el-icon>
-              <div>
-                <div style="font-weight: 500;">{{ result.name }}</div>
-                <div style="font-size: 12px; color: #909399;">{{ result.path }}</div>
+            <div style="display: flex; align-items: flex-start; gap: 8px;">
+              <el-icon v-if="result.is_dir" style="margin-top: 2px;"><FolderOpened /></el-icon>
+              <el-icon v-else style="margin-top: 2px;"><Document /></el-icon>
+              <div style="flex: 1; min-width: 0;">
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  <span style="font-weight: 500;">{{ result.name }}</span>
+                  <el-tag
+                    v-if="result.match_type === 'tag'"
+                    type="success"
+                    size="small"
+                    effect="dark"
+                  >标签匹配</el-tag>
+                  <el-tag
+                    v-else-if="result.match_type === 'name'"
+                    type="primary"
+                    size="small"
+                  >名称匹配</el-tag>
+                  <el-tag
+                    v-else-if="result.match_type === 'content'"
+                    type="warning"
+                    size="small"
+                  >内容匹配</el-tag>
+                </div>
+                <div style="font-size: 12px; color: #909399; margin-top: 2px;">{{ result.path }}</div>
+                <div v-if="result.snippet" style="font-size: 12px; color: #606266; margin-top: 4px; background: #f5f7fa; padding: 4px 6px; border-radius: 3px;">
+                  {{ result.snippet }}
+                </div>
+                <div v-if="result.tags && result.tags.length > 0" style="margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap;">
+                  <el-tag
+                    v-for="tag in result.tags"
+                    :key="tag"
+                    size="small"
+                    effect="plain"
+                    :type="isTagMatched(tag, searchKeyword) ? 'success' : 'info'"
+                  >{{ tag }}</el-tag>
+                </div>
               </div>
             </div>
           </div>

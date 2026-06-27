@@ -22,11 +22,12 @@ type Tag struct {
 
 // SearchResult 搜索结果
 type SearchResult struct {
-	Path      string `json:"path"`
-	Name      string `json:"name"`
-	IsDir     bool   `json:"is_dir"`
-	Snippet   string `json:"snippet,omitempty"`
-	MatchType string `json:"match_type"` // "name" or "content"
+	Path      string   `json:"path"`
+	Name      string   `json:"name"`
+	IsDir     bool     `json:"is_dir"`
+	Snippet   string   `json:"snippet,omitempty"`
+	MatchType string   `json:"match_type"` // "name" | "content" | "tag"
+	Tags      []string `json:"tags,omitempty"`
 }
 
 // Meta 元数据管理接口
