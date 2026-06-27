@@ -1,6 +1,7 @@
 package service
 
 import (
+	"log"
 	"mynote-backend/meta"
 	"mynote-backend/models"
 	"mynote-backend/storage"
@@ -126,10 +127,18 @@ func (s *NoteService) GetNote(path string) (*models.Note, error) {
 	}
 	name = strings.TrimSuffix(name, ".md")
 
+	// 获取笔记的标签（失败不阻断笔记加载）
+	tags, err := s.meta.GetTags(path)
+	if err != nil {
+		log.Printf("[GetNote] 获取标签失败 path=%s: %v", path, err)
+		tags = nil
+	}
+
 	return &models.Note{
 		Path:      path,
 		Name:      name,
 		Content:   content,
+		Tags:      tags,
 		UpdatedAt: modTime,
 	}, nil
 }

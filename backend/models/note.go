@@ -23,6 +23,7 @@ type Note struct {
 	Path      string    `json:"path"`
 	Name      string    `json:"name"`
 	Content   string    `json:"content"`
+	Tags      []string  `json:"tags,omitempty"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
