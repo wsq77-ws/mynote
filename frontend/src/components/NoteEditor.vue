@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getNote, updateNote, updateNoteTags, getNoteTags } from '../api/index.js'
+import { getNote, updateNote, updateNoteTags, getNoteTags, healthCheck } from '../api/index.js'
 import { saveToLocal, loadFromLocal, removeFromLocal, getDirtyList, hasUnsyncedData, isOnline } from '../utils/offlineStorage.js'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
@@ -38,11 +38,18 @@ const stats = computed(() => {
   return { wordCount, lineCount, readTime }
 })
 
-// 网络状态监听
-function handleOnline() {
-  isOffline.value = false
-  // 网络恢复时，自动同步离线数据
-  syncOfflineData()
+// 网络恢复处理
+// navigator.onLine 仅代表浏览器有网络连接，不代表后端可达
+// 先健康检查确认服务器可用，再触发同步
+async function handleOnline() {
+  try {
+    await healthCheck()
+    isOffline.value = false
+    syncOfflineData()
+  } catch {
+    // 服务器仍不可达，保持离线状态
+    isOffline.value = true
+  }
 }
 
 function handleOffline() {
@@ -146,6 +153,9 @@ async function loadNote(path) {
 
 // 自动保存
 let saveTimer = null
+// 保存去重：避免网络慢时并发保存产生竞态
+let saveInFlight = false
+let pendingSave = false
 watch(content, () => {
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
@@ -155,6 +165,12 @@ watch(content, () => {
 
 async function saveContent() {
   if (!props.note?.path) return
+  // 已有保存请求在途，标记待保存，等当前保存完成后再次保存最新内容
+  if (saveInFlight) {
+    pendingSave = true
+    return
+  }
+  saveInFlight = true
   saving.value = true
   try {
     await updateNote(props.note.path, content.value)
@@ -169,7 +185,13 @@ async function saveContent() {
     hasLocalCache.value = true
     isOffline.value = true
   } finally {
+    saveInFlight = false
     saving.value = false
+    // 保存期间内容又变了，再保存一次最新内容
+    if (pendingSave) {
+      pendingSave = false
+      saveContent()
+    }
   }
 }
 
@@ -323,6 +345,7 @@ defineExpose({ manualSave, togglePreview, triggerSync })
         :showCodeRowNumber="true"
         :autoDetectCode="true"
         previewTheme="github"
+        :preview="false"
         :previewOnly="previewOnly"
         style="height: 100%"
       />

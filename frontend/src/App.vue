@@ -8,6 +8,11 @@ const treeKey = ref(0)
 const noteEditorRef = ref(null)
 const showNewNoteDialog = ref(false)
 const sidebarRef = ref(null)
+const sidebarVisible = ref(true)
+
+function toggleSidebar() {
+  sidebarVisible.value = !sidebarVisible.value
+}
 
 function handleSelectNote(note) {
   currentNote.value = note
@@ -48,6 +53,11 @@ function handleGlobalKeydown(e) {
     e.preventDefault()
     showNewNoteDialog.value = true
   }
+  // Ctrl+B 切换侧边栏显示
+  if (e.ctrlKey && e.key === 'b') {
+    e.preventDefault()
+    toggleSidebar()
+  }
 }
 
 onMounted(() => {
@@ -66,6 +76,7 @@ function closeNewNoteDialog() {
 <template>
   <div class="app-container">
     <Sidebar
+      v-show="sidebarVisible"
       ref="sidebarRef"
       :key="treeKey"
       @select-note="handleSelectNote"
@@ -74,6 +85,16 @@ function closeNewNoteDialog() {
       @show-new-note="showNewNoteDialog = true"
     />
     <div class="main-content">
+      <button
+        class="sidebar-toggle"
+        @click="toggleSidebar"
+        :title="sidebarVisible ? '隐藏侧边栏 (Ctrl+B)' : '显示侧边栏 (Ctrl+B)'"
+      >
+        <el-icon>
+          <Fold v-if="sidebarVisible" />
+          <Expand v-else />
+        </el-icon>
+      </button>
       <NoteEditor
         v-if="currentNote"
         ref="noteEditorRef"

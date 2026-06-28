@@ -5,6 +5,34 @@ const api = axios.create({
   timeout: 10000,
 })
 
+// 网络抖动自动重试拦截器
+// 对网络错误、超时、5xx 响应自动重试，指数退避（2s, 4s, 8s），最多 3 次
+api.interceptors.response.use(undefined, async (error) => {
+  const config = error.config
+  if (!config || config.__noRetry) return Promise.reject(error)
+
+  if (!config.__retryCount) config.__retryCount = 0
+
+  const isNetworkError = !error.response
+  const isTimeout = error.code === 'ECONNABORTED'
+  const isServerError = error.response && error.response.status >= 500
+  const isRetryable = isNetworkError || isTimeout || isServerError
+
+  if (!isRetryable || config.__retryCount >= 3) {
+    return Promise.reject(error)
+  }
+
+  config.__retryCount++
+  const delay = Math.pow(2, config.__retryCount) * 1000
+  await new Promise((resolve) => setTimeout(resolve, delay))
+  return api.request(config)
+})
+
+// 健康检查（不参与重试，独立短超时）
+export function healthCheck() {
+  return api.get('/health', { timeout: 5000, __noRetry: true })
+}
+
 // 获取目录树
 export function getTree(path = '') {
   const params = {}

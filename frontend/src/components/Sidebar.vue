@@ -56,6 +56,8 @@ async function loadTree() {
     if (res.data.code === 200) {
       treeData.value = res.data.data || []
       refreshDirectoryOptions()
+      // 默认展开所有目录
+      expandedPaths.value = collectDirectories(treeData.value).map((d) => d.value)
     }
   } catch (err) {
     console.error('加载目录树失败:', err)
@@ -172,7 +174,8 @@ async function deleteNode() {
     await deleteNote(node.path)
     ElMessage.success('删除成功')
     emit('noteDeleted')
-    await loadTree()
+    // 仅移除本地节点，不触发整树刷新（整树刷新仅在新建文档时进行）
+    treeRef.value?.remove(node.path)
   } catch (err) {
     if (err !== 'cancel') {
       ElMessage.error('删除失败: ' + (err.response?.data?.message || err.message))
@@ -245,12 +248,24 @@ async function confirmRename() {
     await renameNote(renameTarget.value.path, renameNewName.value.trim())
     ElMessage.success('重命名成功')
     renameDialogVisible.value = false
-    await loadTree()
+
+    // 仅更新本地节点数据，不触发整树刷新（整树刷新仅在新建文档时进行）
+    const oldPath = renameTarget.value.path
+    const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/'))
+    const newNameTrimmed = renameNewName.value.trim()
+    const newPath = renameTarget.value.type === 'file'
+      ? `${parentPath}/${newNameTrimmed}.md`
+      : `${parentPath}/${newNameTrimmed}`
+
+    const treeNode = treeRef.value?.getNode(oldPath)
+    if (treeNode) {
+      treeNode.data.name = newNameTrimmed
+      treeNode.data.path = newPath
+    }
+
     // 如果是文件，更新编辑器
     if (renameTarget.value.type === 'file') {
-      const parentPath = renameTarget.value.path.substring(0, renameTarget.value.path.lastIndexOf('/'))
-      const newPath = `${parentPath}/${renameNewName.value.trim()}.md`
-      emit('selectNote', { path: newPath, name: renameNewName.value.trim() })
+      emit('selectNote', { path: newPath, name: newNameTrimmed })
     }
   } catch (err) {
     ElMessage.error('重命名失败: ' + (err.response?.data?.message || err.message))

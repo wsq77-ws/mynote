@@ -51,10 +51,11 @@ html, body, #app {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  position: relative;
 }
 
 .editor-header {
-  padding: 12px 20px;
+  padding: 12px 20px 12px 40px;
   border-bottom: 1px solid #e4e7ed;
   display: flex;
   justify-content: space-between;
@@ -129,4 +130,33 @@ html, body, #app {
 
 .context-menu .menu-item.danger {
   color: #f56c6c;
+}
+
+/* 侧边栏显隐切换按钮 */
+.sidebar-toggle {
+  position: absolute;
+  top: 10px;
+  left: 8px;
+  z-index: 100;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #e4e7ed;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #606266;
+  padding: 0;
+}
+
+.sidebar-toggle:hover {
+  background: #f5f7fa;
+  color: #409eff;
+  border-color: #c6e2ff;
+}
+
+.sidebar-toggle .el-icon {
+  font-size: 14px;
 }
