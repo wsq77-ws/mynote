@@ -18,6 +18,7 @@ key concepts: 1. simplicity, 2. ease of use, 3. ai-native, 4. configurable, 5. e
 - **Global Search** — Search note names, paths, content, **and tags**; results display match type and highlighted tags
 - **Tag System** — Add tags to notes, categorize and search by tags; newly added tags are immediately searchable
 - **Drag to Sort** — Drag notes and folders within the same directory to reorder
+- **AI Assistant** — Integrates OpenAI-compatible LLMs (DeepSeek / OpenAI / Moonshot / Zhipu): inline autocomplete (Tab to accept / Esc to dismiss), content generation, one-click summarization of all notes, and a configurable panel (API key, model, `max_tokens`, `temperature`, system prompt). See [LLM Configuration](#llm-configuration)
 - **Pluggable Storage** — Supports local filesystem and object storage (S3 compatible), switchable via config file
 - **One-Click Deployment** — In production mode, the backend serves frontend static files on a single port
 
@@ -115,6 +116,8 @@ When the network is unavailable, the editor automatically switches to offline mo
 | `Ctrl+S` | Save current note |
 | `Ctrl+F` | Open search box |
 | `Ctrl+N` | Create new note |
+| `Ctrl+B` | Toggle sidebar |
+| `Ctrl+L` | Toggle AI assistant panel |
 
 ### Word Count
 
@@ -145,6 +148,18 @@ The editor footer shows real-time stats:
 
 Right-click a note or directory in the tree and select "Delete".
 
+### AI Assistant
+
+The AI assistant integrates any OpenAI-compatible LLM. Open the panel via the magic-wand icon (top-right of the editor) or `Ctrl+L`.
+
+**First-time setup** — open the panel → "Config" tab → fill in API Key, Base URL, Model (e.g. `deepseek-chat`), and optionally `max_tokens`, `temperature`, and a system prompt → click "Save". The client is hot-reloaded without restarting the server.
+
+**Inline autocomplete (F1)** — toggle the "AI" switch in the editor header. After you stop typing for 3s, the last 100 characters are sent as context and a suggestion appears as a floating bar. Press `Tab` to accept or `Esc` to dismiss. Failures are silent and never block editing.
+
+**Generate content (F2)** — in the panel's "Generate" tab, enter a prompt and click "Generate". Insert the result into the current note, or save it as a new note.
+
+**Summarize all notes (F3)** — click the "Summarize" button in the sidebar. It collects all `.md` notes (up to 100), asks the LLM for a structured summary, and writes it to `default/llm_summary.md` (overwrites on repeat; a confirmation dialog is shown).
+
 ## REST API
 
 | Method | Path | Description |
@@ -163,6 +178,11 @@ Right-click a note or directory in the tree and select "Delete".
 | `DELETE` | `/api/tags` | Remove tag `{path, tag}` |
 | `GET` | `/api/tags/search?tag=` | Search by tag |
 | `GET` | `/api/tags/all` | Get all tags |
+| `GET` | `/api/llm/config` | Get LLM config (api_key masked) |
+| `PUT` | `/api/llm/config` | Update LLM config (partial; hot-reload client) |
+| `POST` | `/api/llm/complete` | Inline autocomplete `{text}` |
+| `POST` | `/api/llm/generate` | Generate note content `{prompt}` |
+| `POST` | `/api/llm/summarize` | Summarize all notes → `default/llm_summary.md` |
 
 ### Request Examples
 
@@ -199,6 +219,24 @@ curl -X POST http://localhost:8080/api/tags \
 
 # Search by tag
 curl "http://localhost:8080/api/tags/search?tag=tech"
+
+# Update LLM config (partial; api_key masked value **** is ignored)
+curl -X PUT http://localhost:8080/api/llm/config \
+  -H "Content-Type: application/json" \
+  -d '{"api_key":"sk-xxxx","base_url":"https://api.deepseek.com","model":"deepseek-chat","max_tokens":512,"temperature":0.7}'
+
+# Inline autocomplete
+curl -X POST http://localhost:8080/api/llm/complete \
+  -H "Content-Type: application/json" \
+  -d '{"text":"# Vue3\n\nComposition API"}'
+
+# Generate note content
+curl -X POST http://localhost:8080/api/llm/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Write a study note on Vue3 reactive APIs"}'
+
+# Summarize all notes
+curl -X POST http://localhost:8080/api/llm/summarize
 ```
 
 ## Environment Variables
@@ -209,6 +247,7 @@ curl "http://localhost:8080/api/tags/search?tag=tech"
 | `MYNOTE_DATA_DIR` | Note data directory (overrides config file) | `./data` |
 | `MYNOTE_DIST_DIR` | Frontend static files directory | `../frontend/dist/` |
 | `MYNOTE_PORT` | Service port | `8080` |
+| `MYNOTE_LLM_DIR` | LLM config directory (secret_key.json, system_prompt.md) | `{data_dir}/llm/` |
 | `GIN_MODE` | Gin run mode (`debug`/`release`) | `debug` |
 
 ## Storage Configuration
@@ -240,6 +279,41 @@ storage:
     prefix: "mynote/"
 ```
 
+## LLM Configuration
+
+The AI assistant integrates any OpenAI-compatible LLM provider (DeepSeek, OpenAI, Moonshot, Zhipu, etc.). Configuration is stored in the `data/llm/` directory and managed via the in-app config panel (magic-wand icon → "Config" tab), or by editing the files directly.
+
+### Config Files
+
+| File | Description | Permissions |
+|------|-------------|-------------|
+| `data/llm/secret_key.json` | provider, api_key, base_url, model, max_tokens, temperature | `0600` |
+| `data/llm/system_prompt.md` | System prompt (plain text) | `0644` |
+
+> **Security**: The API key is stored in plaintext in `secret_key.json` (file permission `0600`). `GET /api/llm/config` returns a masked key (`****1234`); the masked value is ignored on update to prevent overwriting the real key. `base_url` must start with `http://` or `https://`.
+
+### Model Parameters
+
+| Parameter | Default | Range | Description |
+|-----------|---------|-------|-------------|
+| `max_tokens` | 512 | [1, 8192] | Max tokens per call (applies to autocomplete / generate / summarize) |
+| `temperature` | 0.7 | (0, 2] | Sampling temperature |
+
+> **Tip for reasoning models** (e.g. DeepSeek-reasoner): set a larger `max_tokens` (e.g. 2000+), otherwise the reasoning phase may exhaust the token budget and leave the final answer empty.
+
+### Example `secret_key.json`
+
+```json
+{
+  "provider": "openai-compatible",
+  "api_key": "sk-xxxxxxxxxxxxxxxx",
+  "base_url": "https://api.deepseek.com",
+  "model": "deepseek-chat",
+  "max_tokens": 512,
+  "temperature": 0.7
+}
+```
+
 ## Cloud Deployment
 
 1. **Build**: Run `.\scripts\build.ps1` to generate the deployment package
@@ -268,8 +342,17 @@ mynote/
 ├── backend/                # Go backend
 │   ├── main.go            # Entry point, routing, static file serving, config loading
 │   ├── config.yaml        # Storage configuration file
-│   ├── api/handler.go     # REST API handlers
-│   ├── service/note_service.go # Note service (depends on Storage interface)
+│   ├── api/
+│   │   ├── handler.go     # REST API handlers (notes/tags/search)
+│   │   └── llm_handler.go # LLM API handlers (config/complete/generate/summarize)
+│   ├── service/
+│   │   ├── note_service.go # Note service (depends on Storage interface)
+│   │   └── llm_service.go  # LLM orchestration (autocomplete/generate/summarize)
+│   ├── llm/                # LLM client layer
+│   │   ├── llm.go         # LLMClient interface + request/response structs
+│   │   ├── config.go      # Config struct, read/write, masking, validation, NewClient factory
+│   │   ├── openai_compat.go # OpenAI-compatible client (DeepSeek/OpenAI/Moonshot)
+│   │   └── llm_design.md  # LLM module design doc
 │   ├── storage/            # Pluggable storage layer
 │   │   ├── storage.go     # Storage interface definition
 │   │   ├── config.go      # Config structs
@@ -277,14 +360,18 @@ mynote/
 │   │   ├── local.go       # Local filesystem implementation
 │   │   ├── oss.go         # Object storage implementation (S3 compatible)
 │   │   └── storage.md     # Storage layer docs
-│   ├── models/note.go     # Data models
+│   ├── models/
+│   │   ├── note.go        # Note data models
+│   │   └── llm.go         # LLM request/response models
 │   └── data/              # Note file storage directory (local storage mode)
+│       └── llm/           # LLM config (secret_key.json, system_prompt.md)
 ├── frontend/               # Vue frontend
 │   └── src/
 │       ├── App.vue        # Root component
 │       ├── components/
-│       │   ├── Sidebar.vue     # Sidebar (directory tree + context menu)
-│       │   └── NoteEditor.vue  # Markdown editor
+│       │   ├── Sidebar.vue     # Sidebar (directory tree + context menu + summarize)
+│       │   ├── NoteEditor.vue  # Markdown editor (with AI autocomplete)
+│       │   └── LLMPanel.vue    # AI assistant panel (generate + config)
 │       └── api/index.js  # API request wrapper
 ├── scripts/
 │   ├── dev.ps1            # Development mode startup

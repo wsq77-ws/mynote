@@ -111,4 +111,31 @@ export function updateSortOrder(path, sortOrder) {
   return api.post('/sort', { path, sortOrder })
 }
 
+// ===== LLM 相关 =====
+
+// 获取 LLM 配置（api_key 脱敏）
+export function getLLMConfig() {
+  return api.get('/llm/config')
+}
+
+// 更新 LLM 配置（部分更新）
+export function updateLLMConfig(data) {
+  return api.put('/llm/config', data)
+}
+
+// 自动补全（F1，不参与重试，独立短超时）
+export function llmComplete(text) {
+  return api.post('/llm/complete', { text }, { timeout: 15000, __noRetry: true })
+}
+
+// 生成笔记内容（F2，长超时）
+export function llmGenerate(prompt) {
+  return api.post('/llm/generate', { prompt }, { timeout: 120000 })
+}
+
+// 总结所有笔记（F3，长超时）
+export function llmSummarize() {
+  return api.post('/llm/summarize', {}, { timeout: 180000 })
+}
+
 export default api

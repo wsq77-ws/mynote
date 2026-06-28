@@ -1,9 +1,9 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getTree, createNote, deleteNote, searchNotes, renameNote } from '../api/index.js'
+import { getTree, createNote, deleteNote, searchNotes, renameNote, llmSummarize } from '../api/index.js'
 
-const emit = defineEmits(['selectNote', 'noteCreated', 'noteDeleted', 'showNewNote'])
+const emit = defineEmits(['selectNote', 'noteCreated', 'noteDeleted', 'showNewNote', 'summarize-done'])
 
 const treeData = ref([])
 const loading = ref(false)
@@ -23,6 +23,7 @@ const renameTarget = ref(null)
 const renameNewName = ref('')
 const treeRef = ref(null)
 const expandedPaths = ref([]) // 保持目录展开状态
+const summarizing = ref(false)
 
 // 从目录树中提取所有目录路径（含 default），用于创建笔记时选择
 const directoryOptions = ref([])
@@ -294,6 +295,39 @@ function handleNodeDrop(draggingNode, dropNode, dropType, ev) {
   ElMessage.success('排序已更新')
 }
 
+// 总结所有笔记（F3）
+// 调用后端汇总所有笔记并写入 default/llm_summary.md
+// 重复调用会覆盖总结文档，需二次确认（设计 15.3）
+async function handleSummarize() {
+  try {
+    await ElMessageBox.confirm(
+      '将汇总所有笔记内容生成总结文档（default/llm_summary.md）。重复调用会覆盖已有总结，是否继续？',
+      'AI 总结',
+      { confirmButtonText: '开始总结', cancelButtonText: '取消', type: 'info' }
+    )
+  } catch (action) {
+    return // 用户取消
+  }
+
+  summarizing.value = true
+  try {
+    const res = await llmSummarize()
+    if (res.data.code === 200) {
+      const data = res.data.data || {}
+      ElMessage.success(`总结完成（${data.note_count} 篇笔记），已生成 ${data.path}`)
+      // 刷新目录树以显示 llm_summary.md
+      await loadTree()
+      emit('summarize-done')
+    } else {
+      ElMessage.error(res.data.message)
+    }
+  } catch (err) {
+    ElMessage.error('总结失败: ' + (err.response?.data?.message || err.message))
+  } finally {
+    summarizing.value = false
+  }
+}
+
 // 暴露方法给父组件
 defineExpose({ focusSearch })
 
@@ -306,9 +340,21 @@ onMounted(() => {
   <div class="sidebar">
     <div class="sidebar-header">
       <h2>MyNote</h2>
-      <el-button type="primary" size="small" @click="showNewFileDialog('')">
-        <el-icon><Plus /></el-icon> 新建
-      </el-button>
+      <div style="display: flex; gap: 6px;">
+        <el-tooltip content="AI 总结所有笔记" placement="bottom">
+          <el-button
+            size="small"
+            :loading="summarizing"
+            @click="handleSummarize"
+          >
+            <el-icon v-if="!summarizing"><MagicStick /></el-icon>
+            <span v-if="!summarizing">总结</span>
+          </el-button>
+        </el-tooltip>
+        <el-button type="primary" size="small" @click="showNewFileDialog('')">
+          <el-icon><Plus /></el-icon> 新建
+        </el-button>
+      </div>
     </div>
 
     <!-- 搜索框 -->
