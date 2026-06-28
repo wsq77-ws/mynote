@@ -1,6 +1,7 @@
 # MyNote - Online Knowledge Note System
 
-A Markdown-based local knowledge note system with hierarchical directory structure and WYSIWYG editing experience. Currently runs locally, with cloud deployment readiness built in.
+A Markdown-based local knowledge note system powered by AI abilities, with hierarchical directory structure and WYSIWYG editing experience. Currently runs locally, with cloud deployment readiness built in. User can configure the LLM model, system prompt, and other parameters via the web interface.
+key concepts: 1. simplicity, 2. ease of use, 3. ai-native, 4. configurable, 5. extensible
 
 [中文文档](README-CN.md)
 
