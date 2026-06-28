@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getNote, updateNote, updateNoteTags, getNoteTags, healthCheck } from '../api/index.js'
+import { getNote, updateNote, updateNoteTags, getNoteTags, healthCheck, llmComplete } from '../api/index.js'
 import { saveToLocal, loadFromLocal, removeFromLocal, getDirtyList, hasUnsyncedData, isOnline } from '../utils/offlineStorage.js'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
@@ -26,6 +26,14 @@ const tagInputRef = ref(null)
 const previewOnly = ref(false)
 const isOffline = ref(!navigator.onLine)
 const hasLocalCache = ref(false)
+
+// LLM 自动补全（F1）
+const autoCompleteEnabled = ref(false)
+const currentSuggestion = ref('')
+let completeTimer = null
+let completeInFlight = false
+// 加载笔记后跳过首次 content 变化触发的补全
+let skipNextComplete = false
 
 // 字数统计
 const stats = computed(() => {
@@ -112,6 +120,9 @@ watch(
 )
 
 async function loadNote(path) {
+  // 切换笔记时跳过首次 content 变化的自动补全触发，避免加载即请求
+  skipNextComplete = true
+  currentSuggestion.value = ''
   try {
     const res = await getNote(path)
     if (res.data.code === 200) {
@@ -262,8 +273,102 @@ async function triggerSync() {
   await syncOfflineData()
 }
 
+// 在编辑器末尾插入内容（用于 LLM 生成结果插入）
+// 触发自动保存流程，保证内容持久化
+function insertContent(text) {
+  if (!text) return
+  const sep = content.value && !content.value.endsWith('\n') ? '\n\n' : ''
+  content.value = content.value + sep + text
+}
+
+// ===== LLM 自动补全（F1）=====
+// 监听内容变化，3s 防抖后以最近 100 字符为上下文请求补全
+watch(content, (val) => {
+  // 切换笔记加载的首次变化不触发补全
+  if (skipNextComplete) {
+    skipNextComplete = false
+    return
+  }
+  // 关闭补全 / 内容为空 / 上一次请求在途 / 有未接受建议时均不触发
+  if (!autoCompleteEnabled.value) return
+  if (completeInFlight) return
+  if (currentSuggestion.value) return
+  if (!val || val.length < 5) return
+
+  if (completeTimer) clearTimeout(completeTimer)
+  completeTimer = setTimeout(() => {
+    fetchSuggestion()
+  }, 3000)
+})
+
+async function fetchSuggestion() {
+  const tail = content.value.slice(-100) // 最近 100 字符
+  if (!tail.trim()) return
+  completeInFlight = true
+  try {
+    const res = await llmComplete(tail)
+    if (res.data.code === 200) {
+      const suggestion = (res.data.data.suggestion || '').trim()
+      // 仅当内容未在请求期间变化时展示建议
+      if (suggestion && content.value.slice(-100) === tail) {
+        currentSuggestion.value = suggestion
+      }
+    }
+    // 失败静默忽略（设计 15.5 离线降级）
+  } catch (err) {
+    // 自动补全失败不影响编辑，静默处理
+    console.debug('[LLMComplete] 失败:', err)
+  } finally {
+    completeInFlight = false
+  }
+}
+
+// 接受建议：追加到内容末尾（补全基于末尾上下文，追加符合预期）
+function acceptSuggestion() {
+  if (!currentSuggestion.value) return
+  content.value = content.value + currentSuggestion.value
+  currentSuggestion.value = ''
+}
+
+// 拒绝建议
+function dismissSuggestion() {
+  currentSuggestion.value = ''
+}
+
+// 切换 AI 补全开关
+function onToggleAutoComplete(val) {
+  if (!val) {
+    // 关闭时清理待发请求与当前建议
+    if (completeTimer) {
+      clearTimeout(completeTimer)
+      completeTimer = null
+    }
+    currentSuggestion.value = ''
+  }
+}
+
+// 建议显示期间监听 Tab/Esc
+function handleSuggestionKeydown(e) {
+  if (!currentSuggestion.value) return
+  if (e.key === 'Tab') {
+    e.preventDefault()
+    acceptSuggestion()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    dismissSuggestion()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleSuggestionKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleSuggestionKeydown)
+})
+
 // 暴露方法给父组件
-defineExpose({ manualSave, togglePreview, triggerSync })
+defineExpose({ manualSave, togglePreview, triggerSync, insertContent })
 </script>
 
 <template>
@@ -275,6 +380,18 @@ defineExpose({ manualSave, togglePreview, triggerSync })
         <el-tag v-else-if="hasLocalCache" type="warning" size="small" style="margin-left: 8px;">待同步</el-tag>
       </h3>
       <div style="display: flex; align-items: center; gap: 8px;">
+        <el-tooltip
+          :content="autoCompleteEnabled ? 'AI 补全已开启（3s 防抖，Tab 接受 / Esc 拒绝）' : '开启 AI 补全'"
+          placement="bottom"
+        >
+          <el-switch
+            v-model="autoCompleteEnabled"
+            inline-prompt
+            active-text="AI"
+            size="small"
+            @change="onToggleAutoComplete"
+          />
+        </el-tooltip>
         <el-button
           v-if="hasLocalCache && !isOffline"
           type="warning"
@@ -349,6 +466,14 @@ defineExpose({ manualSave, togglePreview, triggerSync })
         :previewOnly="previewOnly"
         style="height: 100%"
       />
+      <!-- AI 补全建议条（替代内联幽灵文本，Tab 接受 / Esc 拒绝） -->
+      <div v-if="currentSuggestion" class="suggestion-bar">
+        <span class="suggestion-text">{{ currentSuggestion }}</span>
+        <span class="suggestion-actions">
+          <el-button size="small" type="primary" @click="acceptSuggestion">Tab 接受</el-button>
+          <el-button size="small" @click="dismissSuggestion">Esc 拒绝</el-button>
+        </span>
+      </div>
     </div>
 
     <!-- 底部状态栏 -->
@@ -359,3 +484,37 @@ defineExpose({ manualSave, togglePreview, triggerSync })
     </div>
   </div>
 </template>
+
+<style scoped>
+/* AI 补全建议条：浮于编辑器右下角，灰色文本 */
+.suggestion-bar {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 50;
+  max-width: 70%;
+  background: #fff;
+  border: 1px solid #d9ecff;
+  border-radius: 6px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.suggestion-text {
+  font-size: 13px;
+  color: #909399;
+  white-space: pre-wrap;
+  word-break: break-word;
+  flex: 1;
+  min-width: 0;
+}
+
+.suggestion-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+</style>

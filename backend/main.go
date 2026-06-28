@@ -68,6 +68,15 @@ func main() {
 	noteSvc := service.NewNoteService(store, metaStore)
 	handler := api.NewHandler(noteSvc)
 
+	// 创建 LLM 服务
+	// 配置目录：默认 {data_dir}/llm/，可通过环境变量 MYNOTE_LLM_DIR 覆盖
+	llmConfigDir := filepath.Join(cfg.Storage.Local.DataDir, "llm")
+	if envDir := os.Getenv("MYNOTE_LLM_DIR"); envDir != "" {
+		llmConfigDir = envDir
+	}
+	llmSvc := service.NewLLMService(store, metaStore, llmConfigDir)
+	llmHandler := api.NewLLMHandler(llmSvc)
+
 	// 创建路由
 	mode := os.Getenv("GIN_MODE")
 	if mode == "" {
@@ -97,6 +106,7 @@ func main() {
 
 	// 注册API路由
 	handler.RegisterRoutes(r)
+	llmHandler.RegisterRoutes(r)
 
 	// 生产模式：Serve 前端静态文件
 	distDir := os.Getenv("MYNOTE_DIST_DIR")

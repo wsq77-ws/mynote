@@ -15,6 +15,7 @@
 - **全局搜索** — 支持搜索笔记名称、路径、内容、**标签**，搜索结果展示匹配类型与高亮标签
 - **标签系统** — 为每篇笔记添加标签，按标签分类和搜索，新增标签立即可被搜索到
 - **拖拽排序** — 支持拖拽调整目录树中笔记和目录的顺序
+- **AI 助手** — 集成 OpenAI 兼容大模型（DeepSeek / OpenAI / Moonshot / 智谱）：行内自动补全（Tab 接受 / Esc 拒绝）、内容生成、一键总结所有笔记，配置面板可调 API Key、模型、`max_tokens`、温度、系统提示词。详见 [LLM 配置](#llm-配置)
 - **可插拔存储** — 支持本地文件系统和对象存储（S3 兼容），通过配置文件切换
 - **一键部署** — 生产模式下后端自动服务前端静态文件，单端口运行
 
@@ -112,6 +113,8 @@ cd backend && go build -o mynote-server.exe .
 | `Ctrl+S` | 保存当前笔记 |
 | `Ctrl+F` | 打开搜索框 |
 | `Ctrl+N` | 新建笔记 |
+| `Ctrl+B` | 切换侧边栏显示 |
+| `Ctrl+L` | 切换 AI 助手面板 |
 
 ### 字数统计
 
@@ -142,6 +145,18 @@ cd backend && go build -o mynote-server.exe .
 
 在目录树上右键笔记或目录，选择「删除」。
 
+### AI 助手
+
+AI 助手集成任意 OpenAI 兼容大模型。点击编辑器右上角的魔法棒图标，或按 `Ctrl+L` 打开面板。
+
+**首次配置** — 打开面板 →「配置」页 → 填写 API Key、Base URL、模型（如 `deepseek-chat`），可选填 `max_tokens`、温度、系统提示词 → 点击「保存」。客户端热重载，无需重启服务。
+
+**行内自动补全（F1）** — 打开编辑器顶部的「AI」开关。停止输入 3 秒后，将最近 100 字符作为上下文请求补全，建议以浮层条展示。按 `Tab` 接受、`Esc` 拒绝。失败静默处理，绝不影响编辑。
+
+**内容生成（F2）** — 在面板「生成」页输入提示词，点击「生成」。可将结果插入当前笔记，或另存为新笔记。
+
+**总结所有笔记（F3）** — 点击侧边栏「总结」按钮。收集所有 `.md` 笔记（上限 100 篇），由 LLM 生成结构化总结并写入 `default/llm_summary.md`（重复调用会覆盖，前端二次确认）。
+
 ## REST API
 
 | 方法 | 路径 | 说明 |
@@ -160,6 +175,11 @@ cd backend && go build -o mynote-server.exe .
 | `DELETE` | `/api/tags` | 删除标签 `{path, tag}` |
 | `GET` | `/api/tags/search?tag=` | 按标签搜索 |
 | `GET` | `/api/tags/all` | 获取所有标签 |
+| `GET` | `/api/llm/config` | 获取 LLM 配置（api_key 脱敏） |
+| `PUT` | `/api/llm/config` | 更新 LLM 配置（部分更新；热重载客户端） |
+| `POST` | `/api/llm/complete` | 自动补全 `{text}` |
+| `POST` | `/api/llm/generate` | 生成笔记内容 `{prompt}` |
+| `POST` | `/api/llm/summarize` | 总结所有笔记 → `default/llm_summary.md` |
 
 ### 请求示例
 
@@ -196,6 +216,24 @@ curl -X POST http://localhost:8080/api/tags \
 
 # 按标签搜索
 curl "http://localhost:8080/api/tags/search?tag=技术"
+
+# 更新 LLM 配置（部分更新；脱敏值 **** 会被忽略）
+curl -X PUT http://localhost:8080/api/llm/config \
+  -H "Content-Type: application/json" \
+  -d '{"api_key":"sk-xxxx","base_url":"https://api.deepseek.com","model":"deepseek-chat","max_tokens":512,"temperature":0.7}'
+
+# 自动补全
+curl -X POST http://localhost:8080/api/llm/complete \
+  -H "Content-Type: application/json" \
+  -d '{"text":"# Vue3\n\n组合式 API"}'
+
+# 生成笔记内容
+curl -X POST http://localhost:8080/api/llm/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"写一篇 Vue3 响应式 API 的学习笔记"}'
+
+# 总结所有笔记
+curl -X POST http://localhost:8080/api/llm/summarize
 ```
 
 ## 环境变量
@@ -206,6 +244,7 @@ curl "http://localhost:8080/api/tags/search?tag=技术"
 | `MYNOTE_DATA_DIR` | 笔记数据目录（覆盖配置文件） | `./data` |
 | `MYNOTE_DIST_DIR` | 前端静态文件目录 | `../frontend/dist/` |
 | `MYNOTE_PORT` | 服务端口 | `8080` |
+| `MYNOTE_LLM_DIR` | LLM 配置目录（secret_key.json, system_prompt.md） | `{data_dir}/llm/` |
 | `GIN_MODE` | Gin 运行模式（`debug`/`release`） | `debug` |
 
 ## 存储配置
@@ -237,6 +276,41 @@ storage:
     prefix: "mynote/"
 ```
 
+## LLM 配置
+
+AI 助手集成任意 OpenAI 兼容大模型提供商（DeepSeek、OpenAI、Moonshot、智谱等）。配置存放在 `data/llm/` 目录，通过应用内配置面板（魔法棒图标 →「配置」页）管理，也可直接编辑文件。
+
+### 配置文件
+
+| 文件 | 说明 | 权限 |
+|------|------|------|
+| `data/llm/secret_key.json` | provider、api_key、base_url、model、max_tokens、temperature | `0600` |
+| `data/llm/system_prompt.md` | 系统提示词（纯文本） | `0644` |
+
+> **安全**：API Key 以明文存于 `secret_key.json`（文件权限 `0600`）。`GET /api/llm/config` 返回脱敏值（`****1234`）；更新时脱敏值会被忽略，避免覆盖真实密钥。`base_url` 必须以 `http://` 或 `https://` 开头。
+
+### 模型参数
+
+| 参数 | 默认值 | 范围 | 说明 |
+|------|--------|------|------|
+| `max_tokens` | 512 | [1, 8192] | 单次调用最大 token 数（补全 / 生成 / 总结通用） |
+| `temperature` | 0.7 | (0, 2] | 采样温度 |
+
+> **推理模型提示**（如 DeepSeek-reasoner）：建议设置较大的 `max_tokens`（如 2000+），否则推理阶段可能耗尽 token 预算，导致最终答案为空。
+
+### `secret_key.json` 示例
+
+```json
+{
+  "provider": "openai-compatible",
+  "api_key": "sk-xxxxxxxxxxxxxxxx",
+  "base_url": "https://api.deepseek.com",
+  "model": "deepseek-chat",
+  "max_tokens": 512,
+  "temperature": 0.7
+}
+```
+
 ## 云端部署
 
 1. **构建**：运行 `.\scripts\build.ps1` 生成部署包
@@ -265,8 +339,17 @@ mynote/
 ├── backend/                # Go 后端
 │   ├── main.go            # 入口，路由，静态文件服务，配置加载
 │   ├── config.yaml        # 存储配置文件
-│   ├── api/handler.go     # REST API 处理器
-│   ├── service/note_service.go # 笔记服务（依赖 Storage 接口）
+│   ├── api/
+│   │   ├── handler.go     # REST API 处理器（笔记/标签/搜索）
+│   │   └── llm_handler.go # LLM API 处理器（配置/补全/生成/总结）
+│   ├── service/
+│   │   ├── note_service.go # 笔记服务（依赖 Storage 接口）
+│   │   └── llm_service.go  # LLM 业务编排（补全/生成/总结）
+│   ├── llm/                # LLM 客户端层
+│   │   ├── llm.go         # LLMClient 接口 + 请求/响应结构体
+│   │   ├── config.go      # 配置结构体、读写、脱敏、校验、NewClient 工厂
+│   │   ├── openai_compat.go # OpenAI 兼容客户端（DeepSeek/OpenAI/Moonshot）
+│   │   └── llm_design.md  # LLM 设计文档
 │   ├── storage/            # 可插拔存储层
 │   │   ├── storage.go     # Storage 接口定义
 │   │   ├── config.go      # 配置结构体
@@ -274,14 +357,18 @@ mynote/
 │   │   ├── local.go       # 本地文件系统实现
 │   │   ├── oss.go         # 对象存储实现（S3 兼容）
 │   │   └── storage.md     # 存储层文档
-│   ├── models/note.go     # 数据模型
+│   ├── models/
+│   │   ├── note.go        # 笔记数据模型
+│   │   └── llm.go         # LLM 请求/响应模型
 │   └── data/              # 笔记文件存储目录（本地存储模式）
+│       └── llm/           # LLM 运行时配置目录（secret_key.json, system_prompt.md）
 ├── frontend/               # Vue 前端
 │   └── src/
-│       ├── App.vue        # 根组件
+│       ├── App.vue        # 根组件（含侧边栏切换、AI 面板挂载）
 │       ├── components/
-│       │   ├── Sidebar.vue     # 侧边栏（目录树+右键菜单）
-│       │   └── NoteEditor.vue  # Markdown 编辑器
+│       │   ├── Sidebar.vue     # 侧边栏（目录树+右键菜单+总结按钮）
+│       │   ├── NoteEditor.vue  # Markdown 编辑器（含 F1 自动补全）
+│       │   └── LLMPanel.vue    # AI 助手面板（配置/生成）
 │       └── api/index.js  # API 请求封装
 ├── scripts/
 │   ├── dev.ps1            # 开发模式启动
